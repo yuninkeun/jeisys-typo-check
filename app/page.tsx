@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "./auth/actions";
 
@@ -33,9 +34,15 @@ export default async function Home() {
           로그인되었습니다
         </h1>
         <p className="max-w-prose text-zinc-600 dark:text-zinc-400">
-          다음 단계는 일러스트 파일 업로드와 TEXT 오타 검증 기능입니다. 이 페이지는
-          로그인한 사용자에게만 보입니다.
+          일러스트 파일을 업로드하면 TEXT를 추출해 오탈자와, 과거 이력과
+          표기가 다른 부분을 확인해 드립니다.
         </p>
+        <Link
+          href="/check"
+          className="mt-2 inline-flex h-11 w-fit items-center rounded-lg bg-zinc-900 px-5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+        >
+          오타 검증 시작하기 →
+        </Link>
       </main>
     </div>
   );
