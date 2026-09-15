@@ -7,6 +7,42 @@
     "C:\\Users\\YUNING~1\\AppData\\Local\\Temp\\claude\\C--Users-Yuningeun-OneDrive-----------------my-app\\0b35f51e-7899-40a8-b632-990f9125bd83\\scratchpad\\jeisys_typo_review.html": {
       "count": 1,
       "ts": 1789449678839
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\lib\\supabase\\client.ts": {
+      "count": 1,
+      "ts": 1789452161257
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\lib\\supabase\\server.ts": {
+      "count": 1,
+      "ts": 1789452167821
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\middleware.ts": {
+      "count": 1,
+      "ts": 1789452175112
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\auth\\actions.ts": {
+      "count": 1,
+      "ts": 1789452199519
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\auth\\auth-form.tsx": {
+      "count": 1,
+      "ts": 1789452211154
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\auth\\confirm\\route.ts": {
+      "count": 1,
+      "ts": 1789452222338
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\login\\page.tsx": {
+      "count": 1,
+      "ts": 1789452252300
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\signup\\page.tsx": {
+      "count": 1,
+      "ts": 1789452262303
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\page.tsx": {
+      "count": 1,
+      "ts": 1789452273460
     }
   }
 }
