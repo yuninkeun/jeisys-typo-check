@@ -31,6 +31,12 @@ export async function signIn(
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
+    if (error.code === "email_not_confirmed") {
+      return {
+        error:
+          "이메일 인증이 아직 완료되지 않았습니다. 받으신 메일의 인증 링크를 먼저 눌러주세요.",
+      };
+    }
     return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
   }
 
