@@ -23,35 +23,22 @@ export function UploadForm() {
       >
         <div className="flex flex-col gap-1.5">
           <label
-            htmlFor="product"
-            className="text-sm font-medium text-zinc-800 dark:text-zinc-200"
-          >
-            제품명 <span className="text-zinc-400">(선택, 과거 이력 비교에 사용)</span>
-          </label>
-          <input
-            id="product"
-            name="product"
-            type="text"
-            placeholder="예: DENSITY, POTENZA"
-            className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label
             htmlFor="file"
             className="text-sm font-medium text-zinc-800 dark:text-zinc-200"
           >
-            일러스트 파일 (PNG, JPG)
+            일러스트 파일 (PNG, JPG, PDF)
           </label>
           <input
             id="file"
             name="file"
             type="file"
-            accept="image/png,image/jpeg"
+            accept="image/png,image/jpeg,application/pdf"
             required
             className="text-sm text-zinc-700 file:mr-3 file:h-9 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-50 dark:file:text-zinc-900"
           />
+          <p className="text-xs text-zinc-500">
+            제품명은 파일 이름에서 자동으로 인식합니다 (예: 파일명에 &quot;DENSITY&quot;가 있으면 DENSITY로 분류).
+          </p>
         </div>
 
         {state.error && (
@@ -77,12 +64,22 @@ export function UploadForm() {
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
               {state.fileName} 검증 결과
+              {state.product && (
+                <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-normal text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                  {state.product}
+                </span>
+              )}
             </h2>
             <span className="text-xs text-zinc-500">
               {state.lines.filter((l) => l.is_flagged).length}건 확인 필요 ·
               전체 {state.lines.length}줄
             </span>
           </div>
+          {!state.product && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              파일명에서 제품명을 인식하지 못해 이번 결과는 과거 이력 비교 대상에서 제외됩니다.
+            </p>
+          )}
 
           {state.lines.length === 0 && (
             <p className="text-sm text-zinc-500">
