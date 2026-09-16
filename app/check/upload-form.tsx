@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { uploadAndCheck, type BBox, type CheckState } from "./actions";
-import { PagePreview, RegionCrop, usePageCanvases } from "./file-preview";
+import { PagePreview, RegionCrop, usePageCanvases, type Marker } from "./file-preview";
 
 const initialState: CheckState = {};
 
@@ -100,6 +100,17 @@ export function UploadForm() {
   const flaggedCount = lines?.filter((l) => l.is_flagged).length ?? 0;
   const { pages, loading: previewLoading, error: previewError } =
     usePageCanvases(state.fileUrl, state.mimeType);
+
+  // Number each flagged line so the same badge appears on the full-page
+  // preview and next to its As-Is/To-Be card below.
+  let flagCounter = 0;
+  const flagNumbers: (number | null)[] =
+    lines?.map((line) => (line.is_flagged ? ++flagCounter : null)) ?? [];
+  const markers: Marker[] = (lines ?? []).flatMap((line, i) =>
+    line.is_flagged && line.page && line.bbox
+      ? [{ page: line.page, bbox: line.bbox, label: flagNumbers[i]! }]
+      : [],
+  );
 
   return (
     <div className="flex flex-col gap-5">
@@ -204,7 +215,13 @@ export function UploadForm() {
                     미리보기를 표시하지 못했습니다. ({previewError})
                   </p>
                 )}
-                <PagePreview pages={pages} />
+                <PagePreview pages={pages} markers={markers} />
+                {markers.length > 0 && (
+                  <p className="text-xs text-ink-faint">
+                    빨간 번호가 아래 상세 내용의 확인 필요 항목과 같은 위치를
+                    가리킵니다.
+                  </p>
+                )}
               </section>
             )}
 
@@ -221,10 +238,15 @@ export function UploadForm() {
                         <span
                           className={
                             line.is_flagged
-                              ? "mt-0.5 shrink-0 rounded-sm border border-flag-line bg-flag-soft px-1.5 py-0.5 text-[11px] font-medium text-flag"
+                              ? "mt-0.5 flex shrink-0 items-center gap-1 rounded-sm border border-flag-line bg-flag-soft px-1.5 py-0.5 text-[11px] font-medium text-flag"
                               : "mt-0.5 shrink-0 rounded-sm border border-pass-line bg-pass-soft px-1.5 py-0.5 text-[11px] font-medium text-pass"
                           }
                         >
+                          {line.is_flagged && flagNumbers[i] && (
+                            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-flag text-[9px] font-bold text-white">
+                              {flagNumbers[i]}
+                            </span>
+                          )}
                           {line.is_flagged ? "확인 필요" : "정상"}
                         </span>
                         <span className="text-sm text-ink">{line.text}</span>

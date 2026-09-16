@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { BBox } from "./actions";
 
 const MAX_PAGES = 5;
@@ -135,22 +135,52 @@ export function RegionCrop({
   );
 }
 
-export function PagePreview({ pages }: { pages: HTMLCanvasElement[] }) {
-  const ref = useRef<HTMLDivElement>(null);
+export type Marker = { page: number; bbox: BBox; label: number };
 
-  useEffect(() => {
-    const host = ref.current;
-    if (!host) return;
-    host.replaceChildren(
-      ...pages.map((canvas) => {
-        const img = document.createElement("img");
-        img.src = canvas.toDataURL();
-        img.className = "block w-full border border-line bg-white";
-        img.alt = "업로드한 파일 미리보기";
-        return img;
-      }),
-    );
-  }, [pages]);
+export function PagePreview({
+  pages,
+  markers = [],
+}: {
+  pages: HTMLCanvasElement[];
+  markers?: Marker[];
+}) {
+  const urls = useMemo(() => pages.map((c) => c.toDataURL()), [pages]);
 
-  return <div ref={ref} className="flex flex-col gap-2" />;
+  return (
+    <div className="flex flex-col gap-3">
+      {urls.map((url, i) => {
+        const pageNumber = i + 1;
+        const pageMarkers = markers.filter((m) => m.page === pageNumber);
+        return (
+          <div
+            key={i}
+            className="relative overflow-hidden border border-line bg-white"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={url}
+              alt={`업로드한 파일 ${pageNumber}페이지`}
+              className="block w-full"
+            />
+            {pageMarkers.map((m, mi) => (
+              <div
+                key={mi}
+                className="absolute border-2 border-flag bg-flag/10"
+                style={{
+                  left: `${m.bbox.x * 100}%`,
+                  top: `${m.bbox.y * 100}%`,
+                  width: `${Math.max(m.bbox.w * 100, 2)}%`,
+                  height: `${Math.max(m.bbox.h * 100, 2)}%`,
+                }}
+              >
+                <span className="absolute -left-2.5 -top-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-flag text-[11px] font-bold text-white">
+                  {m.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
