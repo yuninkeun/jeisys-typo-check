@@ -6,6 +6,20 @@ import type { BBox } from "./actions";
 const MAX_PAGES = 5;
 const RENDER_SCALE = 2;
 
+/** pdfjs-dist 6.x calls the still-new Uint8Array.prototype.toHex() (TC39
+ *  Uint8Array-to-base64/hex) to fingerprint a PDF's real /ID trailer entry.
+ *  Browsers that don't ship it yet throw "toHex is not a function" on any
+ *  PDF that has a normal /ID (our hand-made test PDF lacked one, which is
+ *  why this only surfaced on real files). Polyfilling is safer than pinning
+ *  a pdfjs-dist version, since the gap is in the *browser*, not the library. */
+function ensureUint8ArrayToHexPolyfill() {
+  const proto = Uint8Array.prototype as { toHex?: () => string };
+  if (typeof proto.toHex === "function") return;
+  proto.toHex = function toHex(this: Uint8Array) {
+    return Array.from(this, (b) => b.toString(16).padStart(2, "0")).join("");
+  };
+}
+
 /** Rasterises the uploaded file so regions of it can be cropped and shown.
  *  The file is fetched as a blob first so the canvas never becomes tainted. */
 export function usePageCanvases(fileUrl?: string, mimeType?: string) {
@@ -25,8 +39,9 @@ export function usePageCanvases(fileUrl?: string, mimeType?: string) {
         const rendered: HTMLCanvasElement[] = [];
 
         if (mimeType === "application/pdf") {
+          ensureUint8ArrayToHexPolyfill();
           const pdfjs = await import("pdfjs-dist");
-          pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+          pdfjs.GlobalWorkerOptions.workerSrc = "/pdf-worker-entry.mjs";
           const pdf = await pdfjs.getDocument({ data: buffer }).promise;
           const pageCount = Math.min(pdf.numPages, MAX_PAGES);
 
