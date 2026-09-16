@@ -11,4 +11,21 @@ if (typeof Uint8Array.prototype.toHex !== "function") {
   });
 }
 
+// Same story for Map/WeakMap.prototype.getOrInsertComputed() (TC39 "Upsert"
+// proposal) — pdf.worker.min.mjs uses it throughout its glyph/resource caches.
+for (const proto of [Map.prototype, WeakMap.prototype]) {
+  if (typeof proto.getOrInsertComputed !== "function") {
+    Object.defineProperty(proto, "getOrInsertComputed", {
+      value: function (key, callback) {
+        if (this.has(key)) return this.get(key);
+        const value = callback(key);
+        this.set(key, value);
+        return value;
+      },
+      writable: true,
+      configurable: true,
+    });
+  }
+}
+
 await import("/pdf.worker.min.mjs");

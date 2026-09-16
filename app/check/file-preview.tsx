@@ -20,6 +20,24 @@ function ensureUint8ArrayToHexPolyfill() {
   };
 }
 
+/** pdfjs-dist 6.x also calls the still-new Map/WeakMap.prototype.getOrInsertComputed()
+ *  (TC39 "Upsert" proposal) throughout its object graph caching (glyphs, resources,
+ *  namespaces, ...). Browsers that don't ship it yet throw "getOrInsertComputed is
+ *  not a function" — this one runs on the main thread too (pdf.mjs), not just the
+ *  worker, so it needs the same polyfill in both places. */
+function ensureGetOrInsertComputedPolyfill() {
+  type Upsertable = { getOrInsertComputed?: (key: unknown, cb: (key: unknown) => unknown) => unknown };
+  for (const proto of [Map.prototype, WeakMap.prototype] as unknown as Upsertable[]) {
+    if (typeof proto.getOrInsertComputed === "function") continue;
+    proto.getOrInsertComputed = function (this: Map<unknown, unknown>, key, callback) {
+      if (this.has(key)) return this.get(key);
+      const value = callback(key);
+      this.set(key, value);
+      return value;
+    };
+  }
+}
+
 /** Rasterises the uploaded file so regions of it can be cropped and shown.
  *  The file is fetched as a blob first so the canvas never becomes tainted. */
 export function usePageCanvases(fileUrl?: string, mimeType?: string) {
@@ -40,6 +58,7 @@ export function usePageCanvases(fileUrl?: string, mimeType?: string) {
 
         if (mimeType === "application/pdf") {
           ensureUint8ArrayToHexPolyfill();
+          ensureGetOrInsertComputedPolyfill();
           const pdfjs = await import("pdfjs-dist");
           pdfjs.GlobalWorkerOptions.workerSrc = "/pdf-worker-entry.mjs";
           const pdf = await pdfjs.getDocument({ data: buffer }).promise;
