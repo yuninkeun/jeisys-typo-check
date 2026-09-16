@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { uploadAndCheck, type CheckState } from "./actions";
+import { uploadAndCheck, type BBox, type CheckState } from "./actions";
+import { PagePreview, RegionCrop, usePageCanvases } from "./file-preview";
 
 const initialState: CheckState = {};
 
@@ -9,11 +10,19 @@ function AsIsToBeCard({
   text,
   suggestedText,
   reason,
+  pages,
+  page,
+  bbox,
 }: {
   text: string;
   suggestedText?: string;
   reason?: string;
+  pages: HTMLCanvasElement[];
+  page?: number;
+  bbox?: BBox;
 }) {
+  const hasCrop = Boolean(bbox && pages[(page ?? 1) - 1]);
+
   return (
     <div className="flex flex-col gap-2.5 rounded border border-line bg-canvas p-3">
       <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-[1fr_auto_1fr]">
@@ -21,6 +30,11 @@ function AsIsToBeCard({
           <figcaption className="bg-flag px-2 py-1 text-[10px] font-bold tracking-widest text-white">
             AS-IS
           </figcaption>
+          {hasCrop && (
+            <div className="border-b border-flag-line">
+              <RegionCrop pages={pages} page={page} bbox={bbox} />
+            </div>
+          )}
           <p className="px-3 py-2.5 text-sm text-flag line-through decoration-flag/50 decoration-2">
             {text}
           </p>
@@ -33,10 +47,17 @@ function AsIsToBeCard({
           →
         </span>
 
-        <figure className="m-0 overflow-hidden rounded-sm border border-pass-line bg-surface">
+        <figure className="m-0 flex flex-col overflow-hidden rounded-sm border border-pass-line bg-surface">
           <figcaption className="bg-pass px-2 py-1 text-[10px] font-bold tracking-widest text-white">
             TO-BE
           </figcaption>
+          {hasCrop && (
+            <div className="flex flex-1 items-center justify-center border-b border-pass-line bg-white px-3 py-4">
+              <span className="text-center text-base font-medium text-pass">
+                {suggestedText || "—"}
+              </span>
+            </div>
+          )}
           <p className="px-3 py-2.5 text-sm font-medium text-pass">
             {suggestedText || "수정안 없음 — 담당자 확인 필요"}
           </p>
@@ -77,6 +98,8 @@ export function UploadForm() {
   );
   const lines = state.lines;
   const flaggedCount = lines?.filter((l) => l.is_flagged).length ?? 0;
+  const { pages, loading: previewLoading, error: previewError } =
+    usePageCanvases(state.fileUrl, state.mimeType);
 
   return (
     <div className="flex flex-col gap-5">
@@ -165,6 +188,26 @@ export function UploadForm() {
               )}
             </section>
 
+            {/* 업로드한 파일 */}
+            {state.fileUrl && (
+              <section className="flex flex-col gap-2">
+                <h3 className="text-xs font-bold tracking-wide text-ink-muted">
+                  업로드한 파일
+                </h3>
+                {previewLoading && (
+                  <p className="text-sm text-ink-muted">
+                    파일을 불러오는 중입니다…
+                  </p>
+                )}
+                {previewError && (
+                  <p className="text-sm text-ink-muted">
+                    미리보기를 표시하지 못했습니다. ({previewError})
+                  </p>
+                )}
+                <PagePreview pages={pages} />
+              </section>
+            )}
+
             {/* 상세 */}
             {lines.length > 0 && (
               <section className="flex flex-col gap-2">
@@ -191,6 +234,9 @@ export function UploadForm() {
                           text={line.text}
                           suggestedText={line.suggested_text}
                           reason={line.flag_reason}
+                          pages={pages}
+                          page={line.page}
+                          bbox={line.bbox}
                         />
                       )}
                     </li>

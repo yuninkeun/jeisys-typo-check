@@ -39,17 +39,23 @@ function detectProductFromFilename(filename: string): string | null {
   return null;
 }
 
+export type BBox = { x: number; y: number; w: number; h: number };
+
 type ExtractedLine = {
   text: string;
   is_flagged: boolean;
   flag_reason?: string;
   suggested_text?: string;
+  page?: number;
+  bbox?: BBox;
 };
 
 export type CheckState = {
   error?: string;
   documentId?: string;
   fileName?: string;
+  fileUrl?: string;
+  mimeType?: string;
   product?: string | null;
   lines?: ExtractedLine[];
 };
@@ -62,10 +68,13 @@ const SYSTEM_PROMPT = `당신은 의료기기 회사(제이시스메디칼)의 �
 3. 아래 "과거에 확인된 유사 텍스트" 목록이 주어지면, 이번 텍스트가 그 목록과 표기가 다른데 같은 의미로 보이면 반드시 지적하세요. 이것이 가장 중요한 오탈자 발견 방법입니다.
 4. 확신이 없으면 is_flagged를 false로 둡니다. 제품명, 코드, 숫자는 실제 오류가 아니면 건드리지 않습니다.
 
+5. 각 줄이 페이지의 어디에 있는지 위치도 함께 알려주세요. page는 1부터 시작하는 페이지 번호,
+   bbox는 페이지 전체 대비 비율(0~1)입니다: x=왼쪽 끝, y=위쪽 끝, w=가로 길이, h=세로 높이.
+
 반드시 아래 JSON 형식으로만 응답하세요. 코드블록이나 다른 설명 없이 JSON 객체 하나만 출력합니다.
 {
   "lines": [
-    { "text": "추출된 원문 그대로", "is_flagged": boolean, "flag_reason": "오탈자로 판단한 이유 (한국어, is_flagged가 true일 때만)", "suggested_text": "수정 제안 (is_flagged가 true일 때만)" }
+    { "text": "추출된 원문 그대로", "is_flagged": boolean, "flag_reason": "오탈자로 판단한 이유 (한국어, is_flagged가 true일 때만)", "suggested_text": "수정 제안 (is_flagged가 true일 때만)", "page": 1, "bbox": { "x": 0.1, "y": 0.2, "w": 0.5, "h": 0.06 } }
   ]
 }`;
 
@@ -267,6 +276,8 @@ export async function uploadAndCheck(
         is_flagged: Boolean(line.is_flagged),
         flag_reason: line.is_flagged ? line.flag_reason ?? null : null,
         suggested_text: line.is_flagged ? line.suggested_text ?? null : null,
+        page: line.page ?? null,
+        bbox: line.bbox ?? null,
       }));
       const { error: insertError } = await supabase
         .from("text_extractions")
@@ -275,8 +286,20 @@ export async function uploadAndCheck(
     }
 
     await supabase.from("documents").update({ status: "done" }).eq("id", doc.id);
+
+    const { data: signed } = await supabase.storage
+      .from("illustrations")
+      .createSignedUrl(storagePath, 60 * 60);
+
     revalidatePath("/check");
-    return { documentId: doc.id, fileName: file.name, product, lines };
+    return {
+      documentId: doc.id,
+      fileName: file.name,
+      fileUrl: signed?.signedUrl,
+      mimeType: file.type,
+      product,
+      lines,
+    };
   } catch (err) {
     await supabase
       .from("documents")
