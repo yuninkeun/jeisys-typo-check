@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AppHeader } from "../components/app-header";
 import { createClient } from "@/lib/supabase/server";
 import { UploadForm } from "./upload-form";
@@ -48,32 +49,34 @@ export default async function CheckPage() {
                 const flaggedCount =
                   extractions?.filter((e) => e.is_flagged).length ?? 0;
                 return (
-                  <li
-                    key={doc.id}
-                    className="flex items-center justify-between gap-3 px-4 py-3"
-                  >
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <span className="truncate text-sm font-medium text-ink">
-                        {doc.original_filename}
-                      </span>
-                      <span className="text-xs text-ink-faint">
-                        {doc.product ? `${doc.product} · ` : ""}
-                        {new Date(doc.created_at).toLocaleString("ko-KR")}
-                      </span>
-                    </div>
-                    {doc.status === "failed" ? (
-                      <span className="shrink-0 rounded-sm border border-line-strong px-2 py-0.5 text-xs text-ink-muted">
-                        실패
-                      </span>
-                    ) : flaggedCount > 0 ? (
-                      <span className="shrink-0 rounded-sm border border-flag-line bg-flag-soft px-2 py-0.5 text-xs font-medium text-flag">
-                        확인 필요 {flaggedCount}
-                      </span>
-                    ) : (
-                      <span className="shrink-0 rounded-sm border border-pass-line bg-pass-soft px-2 py-0.5 text-xs font-medium text-pass">
-                        이상 없음
-                      </span>
-                    )}
+                  <li key={doc.id}>
+                    <Link
+                      href={`/check/${doc.id}`}
+                      className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-canvas"
+                    >
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <span className="truncate text-sm font-medium text-ink">
+                          {doc.original_filename}
+                        </span>
+                        <span className="text-xs text-ink-faint">
+                          {doc.product ? `${doc.product} · ` : ""}
+                          {new Date(doc.created_at).toLocaleString("ko-KR")}
+                        </span>
+                      </div>
+                      {doc.status === "failed" ? (
+                        <span className="shrink-0 rounded-sm border border-line-strong px-2 py-0.5 text-xs text-ink-muted">
+                          실패
+                        </span>
+                      ) : flaggedCount > 0 ? (
+                        <span className="shrink-0 rounded-sm border border-flag-line bg-flag-soft px-2 py-0.5 text-xs font-medium text-flag">
+                          확인 필요 {flaggedCount}
+                        </span>
+                      ) : (
+                        <span className="shrink-0 rounded-sm border border-pass-line bg-pass-soft px-2 py-0.5 text-xs font-medium text-pass">
+                          이상 없음
+                        </span>
+                      )}
+                    </Link>
                   </li>
                 );
               })}
