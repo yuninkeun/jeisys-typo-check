@@ -218,7 +218,11 @@ export async function uploadAndCheck(
   const supabase = await createClient();
   const arrayBuffer = await file.arrayBuffer();
   const bytes = new Uint8Array(arrayBuffer);
-  const storagePath = `${user.id}/${Date.now()}-${file.name}`;
+  // Supabase Storage keys must be ASCII-safe; the original (possibly Korean/
+  // bracketed) filename is preserved separately in documents.original_filename.
+  const extMatch = file.name.match(/\.[a-zA-Z0-9]+$/);
+  const ext = extMatch ? extMatch[0] : "";
+  const storagePath = `${user.id}/${Date.now()}-${crypto.randomUUID()}${ext}`;
 
   const { error: uploadError } = await supabase.storage
     .from("illustrations")
