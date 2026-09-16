@@ -171,6 +171,18 @@ export function RegionCrop({
 
 export type Marker = { page: number; bbox: BBox; label: number };
 
+/** The model's bbox is a rough eyeball estimate, not an OCR-grade measurement —
+ *  on repeated/multi-instance layouts (e.g. a sheet of near-identical labels)
+ *  it's often off by about one text line vertically. Padding the marker by a
+ *  full line height keeps it over the actual text instead of the line below it,
+ *  the same way RegionCrop already pads its crop for the same reason. */
+function paddedMarkerRect(bbox: BBox) {
+  const padY = Math.max(bbox.h, 0.02);
+  const top = Math.max(0, bbox.y - padY);
+  const bottom = Math.min(1, bbox.y + bbox.h + padY);
+  return { left: bbox.x, top, width: bbox.w, height: bottom - top };
+}
+
 export function PagePreview({
   pages,
   markers = [],
@@ -196,22 +208,25 @@ export function PagePreview({
               alt={`업로드한 파일 ${pageNumber}페이지`}
               className="block w-full"
             />
-            {pageMarkers.map((m, mi) => (
-              <div
-                key={mi}
-                className="absolute border-2 border-flag bg-flag/10"
-                style={{
-                  left: `${m.bbox.x * 100}%`,
-                  top: `${m.bbox.y * 100}%`,
-                  width: `${Math.max(m.bbox.w * 100, 2)}%`,
-                  height: `${Math.max(m.bbox.h * 100, 2)}%`,
-                }}
-              >
-                <span className="absolute -left-2.5 -top-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-flag text-[11px] font-bold text-white">
-                  {m.label}
-                </span>
-              </div>
-            ))}
+            {pageMarkers.map((m, mi) => {
+              const rect = paddedMarkerRect(m.bbox);
+              return (
+                <div
+                  key={mi}
+                  className="absolute border-2 border-flag bg-flag/10"
+                  style={{
+                    left: `${rect.left * 100}%`,
+                    top: `${rect.top * 100}%`,
+                    width: `${Math.max(rect.width * 100, 2)}%`,
+                    height: `${Math.max(rect.height * 100, 2)}%`,
+                  }}
+                >
+                  <span className="absolute -left-2.5 -top-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-flag text-[11px] font-bold text-white">
+                    {m.label}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         );
       })}
