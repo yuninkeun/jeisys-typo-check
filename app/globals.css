@@ -1,26 +1,42 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Jeisys corporate palette — navy wordmark bar over a light canvas,
+   matching the Jeisys CMS / SharePoint sign-in styling. */
+@theme {
+  --color-brand-50: #f2f5fa;
+  --color-brand-100: #dfe6f1;
+  --color-brand-200: #c2cfe4;
+  --color-brand-500: #2c4a7c;
+  --color-brand-600: #24406f;
+  --color-brand-700: #1b2f5e;
+  --color-brand-800: #152548;
+  --color-brand-900: #0f1b35;
+
+  --color-canvas: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-line: #e3e6eb;
+  --color-line-strong: #d2d7df;
+  --color-ink: #1a1d23;
+  --color-ink-muted: #6b7280;
+  --color-ink-faint: #9aa1ac;
+
+  --color-flag: #c02626;
+  --color-flag-soft: #fdf2f2;
+  --color-flag-line: #f0c9c9;
+  --color-pass: #12714f;
+  --color-pass-soft: #f1f8f4;
+  --color-pass-line: #bfe0d1;
+
+  --font-sans: var(--font-noto-sans-kr), system-ui, sans-serif;
+  --font-serif: var(--font-lora), "Palatino Linotype", Georgia, serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
 }

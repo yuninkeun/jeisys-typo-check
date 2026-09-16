@@ -15,65 +15,57 @@ function AsIsToBeCard({
   reason?: string;
 }) {
   return (
-    <div className="ml-1 flex flex-col gap-2 rounded-lg border border-red-200 bg-red-50/50 p-3 dark:border-red-900/60 dark:bg-red-950/20">
-      <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[1fr_auto_1fr]">
-        <div className="rounded-md border border-red-300 bg-white dark:border-red-900 dark:bg-zinc-950">
-          <div className="rounded-t-md bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-            As-Is
-          </div>
-          <div className="px-2.5 py-2 text-sm text-red-700 line-through decoration-red-400 decoration-2 dark:text-red-300">
+    <div className="flex flex-col gap-2.5 rounded border border-line bg-canvas p-3">
+      <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-[1fr_auto_1fr]">
+        <figure className="m-0 overflow-hidden rounded-sm border border-flag-line bg-surface">
+          <figcaption className="bg-flag px-2 py-1 text-[10px] font-bold tracking-widest text-white">
+            AS-IS
+          </figcaption>
+          <p className="px-3 py-2.5 text-sm text-flag line-through decoration-flag/50 decoration-2">
             {text}
-          </div>
-        </div>
+          </p>
+        </figure>
 
-        <span className="hidden justify-self-center text-zinc-400 sm:block">
+        <span
+          aria-hidden
+          className="hidden self-center px-1 text-ink-faint sm:block"
+        >
           →
         </span>
 
-        <div className="rounded-md border border-emerald-300 bg-white dark:border-emerald-900 dark:bg-zinc-950">
-          <div className="rounded-t-md bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-            To-Be
-          </div>
-          <div className="px-2.5 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
-            {suggestedText || "(수정안 없음 — 직접 검토 필요)"}
-          </div>
-        </div>
+        <figure className="m-0 overflow-hidden rounded-sm border border-pass-line bg-surface">
+          <figcaption className="bg-pass px-2 py-1 text-[10px] font-bold tracking-widest text-white">
+            TO-BE
+          </figcaption>
+          <p className="px-3 py-2.5 text-sm font-medium text-pass">
+            {suggestedText || "수정안 없음 — 담당자 확인 필요"}
+          </p>
+        </figure>
       </div>
-      {reason && (
-        <p className="text-xs text-red-800/80 dark:text-red-200/70">{reason}</p>
-      )}
+      {reason && <p className="text-xs leading-relaxed text-ink-muted">{reason}</p>}
     </div>
   );
 }
 
-function ResultSummary({ lines }: { lines: NonNullable<CheckState["lines"]> }) {
-  const flaggedCount = lines.filter((l) => l.is_flagged).length;
-  const okCount = lines.length - flaggedCount;
+function SummaryTile({
+  value,
+  label,
+  tone = "neutral",
+}: {
+  value: number;
+  label: string;
+  tone?: "neutral" | "flag" | "pass";
+}) {
+  const tones = {
+    neutral: "border-line bg-surface text-ink",
+    flag: "border-flag-line bg-flag-soft text-flag",
+    pass: "border-pass-line bg-pass-soft text-pass",
+  } as const;
 
   return (
-    <div className="grid grid-cols-3 gap-2">
-      <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-center dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-          {lines.length}
-        </div>
-        <div className="text-[11px] text-zinc-500">추출된 줄</div>
-      </div>
-      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-center dark:border-red-900/60 dark:bg-red-950/30">
-        <div className="text-xl font-semibold text-red-700 dark:text-red-300">
-          {flaggedCount}
-        </div>
-        <div className="text-[11px] text-red-700/80 dark:text-red-300/80">
-          확인 필요
-        </div>
-      </div>
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-center dark:border-emerald-900/60 dark:bg-emerald-950/30">
-        <div className="text-xl font-semibold text-emerald-700 dark:text-emerald-300">
-          {okCount}
-        </div>
-        <div className="text-[11px] text-emerald-700/80 dark:text-emerald-300/80">
-          정상
-        </div>
-      </div>
+    <div className={`rounded border px-4 py-3 ${tones[tone]}`}>
+      <div className="text-2xl font-bold tabular-nums">{value}</div>
+      <div className="mt-0.5 text-xs opacity-80">{label}</div>
     </div>
   );
 }
@@ -83,19 +75,18 @@ export function UploadForm() {
     uploadAndCheck,
     initialState,
   );
+  const lines = state.lines;
+  const flaggedCount = lines?.filter((l) => l.is_flagged).length ?? 0;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <form
         action={formAction}
-        className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950"
+        className="flex flex-col gap-4 rounded border border-line bg-surface p-5"
       >
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="file"
-            className="text-sm font-medium text-zinc-800 dark:text-zinc-200"
-          >
-            일러스트 파일 (PNG, JPG, PDF)
+        <div className="flex flex-col gap-2">
+          <label htmlFor="file" className="text-xs font-medium text-ink-muted">
+            일러스트 파일 · PNG, JPG, PDF (최대 25MB)
           </label>
           <input
             id="file"
@@ -103,17 +94,18 @@ export function UploadForm() {
             type="file"
             accept="image/png,image/jpeg,application/pdf"
             required
-            className="text-sm text-zinc-700 file:mr-3 file:h-9 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:text-sm file:font-medium file:text-white dark:text-zinc-300 dark:file:bg-zinc-50 dark:file:text-zinc-900"
+            className="w-full cursor-pointer rounded border border-line-strong bg-white text-sm text-ink file:mr-3 file:cursor-pointer file:border-0 file:border-r file:border-line-strong file:bg-canvas file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-ink"
           />
-          <p className="text-xs text-zinc-500">
-            제품명은 파일 이름에서 자동으로 인식합니다 (예: 파일명에 &quot;DENSITY&quot;가 있으면 DENSITY로 분류).
+          <p className="text-xs text-ink-faint">
+            제품명은 파일 이름에서 자동으로 인식합니다. (예: 파일명에
+            &quot;DENSITY&quot;가 포함되면 DENSITY로 분류)
           </p>
         </div>
 
         {state.error && (
           <p
             role="alert"
-            className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300"
+            className="rounded border border-flag-line bg-flag-soft px-3 py-2 text-sm text-flag"
           >
             {state.error}
           </p>
@@ -122,77 +114,92 @@ export function UploadForm() {
         <button
           type="submit"
           disabled={pending}
-          className="h-10 rounded-lg bg-zinc-900 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900"
+          className="h-11 rounded bg-brand-700 text-sm font-medium text-white transition-colors hover:bg-brand-800 disabled:opacity-60"
         >
-          {pending ? "검증 중… (최대 30초)" : "업로드하고 오타 검증하기"}
+          {pending ? "검증 중… (최대 30초)" : "업로드하고 검증"}
         </button>
       </form>
 
-      {state.lines && (
-        <div className="flex flex-col gap-5 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
-          {/* 요약 */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                {state.fileName}
-              </h2>
-              {state.product && (
-                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-normal text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                  {state.product}
-                </span>
-              )}
-            </div>
-
-            {state.lines.length > 0 && <ResultSummary lines={state.lines} />}
-
-            {!state.product && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                파일명에서 제품명을 인식하지 못해 이번 결과는 과거 이력 비교 대상에서 제외됩니다.
-              </p>
+      {lines && (
+        <article className="overflow-hidden rounded border border-line bg-surface">
+          <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-canvas px-5 py-3">
+            <h2 className="truncate text-sm font-bold text-ink">
+              {state.fileName}
+            </h2>
+            {state.product ? (
+              <span className="rounded-sm border border-brand-200 bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">
+                {state.product}
+              </span>
+            ) : (
+              <span className="rounded-sm border border-line-strong px-2 py-0.5 text-xs text-ink-muted">
+                제품 미분류
+              </span>
             )}
-            {state.lines.length === 0 && (
-              <p className="text-sm text-zinc-500">
-                텍스트를 추출하지 못했습니다. 이미지 해상도를 확인해 주세요.
-              </p>
+          </header>
+
+          <div className="flex flex-col gap-5 p-5">
+            {/* 요약 */}
+            <section className="flex flex-col gap-2">
+              <h3 className="text-xs font-bold tracking-wide text-ink-muted">
+                요약
+              </h3>
+              <div className="grid grid-cols-3 gap-2">
+                <SummaryTile value={lines.length} label="추출된 줄" />
+                <SummaryTile value={flaggedCount} label="확인 필요" tone="flag" />
+                <SummaryTile
+                  value={lines.length - flaggedCount}
+                  label="이상 없음"
+                  tone="pass"
+                />
+              </div>
+              {!state.product && (
+                <p className="text-xs text-ink-muted">
+                  파일명에서 제품명을 인식하지 못해 과거 이력 비교는 수행되지
+                  않았습니다.
+                </p>
+              )}
+              {lines.length === 0 && (
+                <p className="text-sm text-ink-muted">
+                  텍스트를 추출하지 못했습니다. 파일 해상도를 확인해 주세요.
+                </p>
+              )}
+            </section>
+
+            {/* 상세 */}
+            {lines.length > 0 && (
+              <section className="flex flex-col gap-2">
+                <h3 className="text-xs font-bold tracking-wide text-ink-muted">
+                  상세 내용
+                </h3>
+                <ul className="divide-y divide-line rounded border border-line">
+                  {lines.map((line, i) => (
+                    <li key={i} className="flex flex-col gap-2.5 px-4 py-3">
+                      <div className="flex items-start gap-2.5">
+                        <span
+                          className={
+                            line.is_flagged
+                              ? "mt-0.5 shrink-0 rounded-sm border border-flag-line bg-flag-soft px-1.5 py-0.5 text-[11px] font-medium text-flag"
+                              : "mt-0.5 shrink-0 rounded-sm border border-pass-line bg-pass-soft px-1.5 py-0.5 text-[11px] font-medium text-pass"
+                          }
+                        >
+                          {line.is_flagged ? "확인 필요" : "정상"}
+                        </span>
+                        <span className="text-sm text-ink">{line.text}</span>
+                      </div>
+                      {line.is_flagged && (
+                        <AsIsToBeCard
+                          text={line.text}
+                          suggestedText={line.suggested_text}
+                          reason={line.flag_reason}
+                        />
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
           </div>
-
-          {/* 상세 */}
-          {state.lines.length > 0 && (
-            <div className="flex flex-col gap-1 border-t border-zinc-100 pt-4 dark:border-zinc-900">
-              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                상세 내용
-              </h3>
-              <ul className="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-900">
-                {state.lines.map((line, i) => (
-                  <li key={i} className="flex flex-col gap-2 py-3">
-                    <div className="flex items-start gap-2">
-                      <span
-                        className={
-                          line.is_flagged
-                            ? "mt-0.5 shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700 dark:bg-red-950/60 dark:text-red-300"
-                            : "mt-0.5 shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-                        }
-                      >
-                        {line.is_flagged ? "확인 필요" : "정상"}
-                      </span>
-                      <span className="text-sm text-zinc-900 dark:text-zinc-100">
-                        {line.text}
-                      </span>
-                    </div>
-                    {line.is_flagged && (
-                      <AsIsToBeCard
-                        text={line.text}
-                        suggestedText={line.suggested_text}
-                        reason={line.flag_reason}
-                      />
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
+        </article>
       )}
     </div>
   );

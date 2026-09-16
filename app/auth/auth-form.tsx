@@ -9,6 +9,9 @@ type Props = {
   redirectTo?: string;
 };
 
+const fieldClass =
+  "h-11 w-full rounded border border-line-strong bg-white px-3 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15";
+
 export function AuthForm({ mode, redirectTo = "/" }: Props) {
   const isSignUp = mode === "signup";
   const [state, formAction, pending] = useActionState<AuthState, FormData>(
@@ -17,25 +20,26 @@ export function AuthForm({ mode, redirectTo = "/" }: Props) {
   );
 
   return (
-    <div className="w-full max-w-sm">
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-        {isSignUp ? "계정 만들기" : "로그인"}
-      </h1>
-      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-        {isSignUp
-          ? "@jeisys.com 이메일로만 가입할 수 있습니다."
-          : "사내 계정으로 로그인해 주세요."}
-      </p>
+    <form
+      action={formAction}
+      className="flex flex-col gap-5 rounded border border-line bg-surface p-7 shadow-[0_1px_2px_rgba(26,29,35,0.04),0_8px_24px_-16px_rgba(26,29,35,0.25)]"
+    >
+      <div className="flex flex-col gap-1">
+        <h1 className="text-lg font-bold text-ink">
+          {isSignUp ? "계정 만들기" : "로그인"}
+        </h1>
+        <p className="text-sm text-ink-muted">
+          {isSignUp
+            ? "@jeisys.com 이메일로만 가입할 수 있습니다."
+            : "사내 계정으로 로그인해 주세요."}
+        </p>
+      </div>
 
-      <form action={formAction} className="mt-8 flex flex-col gap-4">
-        {!isSignUp && (
-          <input type="hidden" name="redirectTo" value={redirectTo} />
-        )}
+      {!isSignUp && <input type="hidden" name="redirectTo" value={redirectTo} />}
 
+      <div className="flex flex-col gap-4">
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            이메일
-          </span>
+          <span className="text-xs font-medium text-ink-muted">이메일</span>
           <input
             id="email"
             name="email"
@@ -43,14 +47,12 @@ export function AuthForm({ mode, redirectTo = "/" }: Props) {
             required
             autoComplete="email"
             placeholder="name@jeisys.com"
-            className="h-11 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-300"
+            className={fieldClass}
           />
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            비밀번호
-          </span>
+          <span className="text-xs font-medium text-ink-muted">비밀번호</span>
           <input
             id="password"
             name="password"
@@ -58,45 +60,45 @@ export function AuthForm({ mode, redirectTo = "/" }: Props) {
             required
             minLength={isSignUp ? 8 : undefined}
             autoComplete={isSignUp ? "new-password" : "current-password"}
-            className="h-11 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-300"
+            className={fieldClass}
           />
         </label>
+      </div>
 
-        {state.error && (
-          <p
-            role="alert"
-            className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300"
-          >
-            {state.error}
-          </p>
-        )}
-        {state.message && (
-          <p
-            role="status"
-            className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
-          >
-            {state.message}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={pending}
-          className="mt-2 h-11 rounded-lg bg-zinc-900 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+      {state.error && (
+        <p
+          role="alert"
+          className="rounded border border-flag-line bg-flag-soft px-3 py-2 text-sm text-flag"
         >
-          {pending ? "처리 중…" : isSignUp ? "가입하기" : "로그인"}
-        </button>
-      </form>
+          {state.error}
+        </p>
+      )}
+      {state.message && (
+        <p
+          role="status"
+          className="rounded border border-pass-line bg-pass-soft px-3 py-2 text-sm text-pass"
+        >
+          {state.message}
+        </p>
+      )}
 
-      <p className="mt-6 text-sm text-zinc-600 dark:text-zinc-400">
+      <button
+        type="submit"
+        disabled={pending}
+        className="h-11 rounded bg-brand-700 text-sm font-medium text-white transition-colors hover:bg-brand-800 disabled:opacity-60"
+      >
+        {pending ? "처리 중…" : isSignUp ? "가입하기" : "로그인"}
+      </button>
+
+      <p className="border-t border-line pt-4 text-center text-sm text-ink-muted">
         {isSignUp ? "이미 계정이 있으신가요? " : "계정이 없으신가요? "}
         <Link
           href={isSignUp ? "/login" : "/signup"}
-          className="font-medium text-zinc-900 underline underline-offset-4 dark:text-zinc-50"
+          className="font-medium text-brand-700 underline underline-offset-4"
         >
           {isSignUp ? "로그인" : "가입하기"}
         </Link>
       </p>
-    </div>
+    </form>
   );
 }

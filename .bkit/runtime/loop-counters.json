@@ -1,12 +1,44 @@
 {
   "fileEditCounts": {
     "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\check\\upload-form.tsx": {
-      "count": 1,
-      "ts": 1789530470349
+      "count": 2,
+      "ts": 1789531077685
     },
     "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\check\\preview\\page.tsx": {
+      "count": 3,
+      "ts": 1789531218398
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\globals.css": {
+      "count": 3,
+      "ts": 1789530917124
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\layout.tsx": {
       "count": 1,
-      "ts": 1789530526288
+      "ts": 1789530929864
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\components\\wordmark.tsx": {
+      "count": 1,
+      "ts": 1789530944210
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\auth\\auth-form.tsx": {
+      "count": 1,
+      "ts": 1789530985927
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\login\\page.tsx": {
+      "count": 1,
+      "ts": 1789531000556
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\signup\\page.tsx": {
+      "count": 1,
+      "ts": 1789531006878
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\page.tsx": {
+      "count": 1,
+      "ts": 1789531020032
+    },
+    "C:\\Users\\Yuningeun\\OneDrive - 제이시스메디칼\\바탕 화면\\my-app\\app\\check\\page.tsx": {
+      "count": 1,
+      "ts": 1789531044353
     }
   }
 }
