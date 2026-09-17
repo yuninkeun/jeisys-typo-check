@@ -1,21 +1,15 @@
 "use client";
 
-import type { BBox } from "./actions";
-import { PagePreview, RegionCrop, usePageCanvases, type Marker } from "./file-preview";
-
 export type ResultLine = {
   text: string;
   is_flagged: boolean;
   flag_reason?: string | null;
   suggested_text?: string | null;
   page?: number | null;
-  bbox?: BBox | null;
 };
 
 export type ResultData = {
   fileName: string;
-  fileUrl?: string;
-  mimeType?: string;
   product?: string | null;
   lines: ResultLine[];
 };
@@ -24,31 +18,25 @@ function AsIsToBeCard({
   text,
   suggestedText,
   reason,
-  pages,
   page,
-  bbox,
 }: {
   text: string;
   suggestedText?: string | null;
   reason?: string | null;
-  pages: HTMLCanvasElement[];
   page?: number | null;
-  bbox?: BBox | null;
 }) {
-  const hasCrop = Boolean(bbox && pages[(page ?? 1) - 1]);
-
   return (
     <div className="flex flex-col gap-2.5 rounded border border-line bg-canvas p-3">
+      {page != null && (
+        <span className="w-fit rounded-sm border border-line-strong px-1.5 py-0.5 text-[11px] font-medium text-ink-muted">
+          페이지 {page}
+        </span>
+      )}
       <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-[1fr_auto_1fr]">
         <figure className="m-0 overflow-hidden rounded-sm border border-flag-line bg-surface">
           <figcaption className="bg-flag px-2 py-1 text-[10px] font-bold tracking-widest text-white">
             AS-IS
           </figcaption>
-          {hasCrop && (
-            <div className="border-b border-flag-line">
-              <RegionCrop pages={pages} page={page ?? 1} bbox={bbox ?? undefined} />
-            </div>
-          )}
           <p className="px-3 py-2.5 text-sm text-flag line-through decoration-flag/50 decoration-2">
             {text}
           </p>
@@ -62,13 +50,6 @@ function AsIsToBeCard({
           <figcaption className="bg-pass px-2 py-1 text-[10px] font-bold tracking-widest text-white">
             TO-BE
           </figcaption>
-          {hasCrop && (
-            <div className="flex flex-1 items-center justify-center border-b border-pass-line bg-white px-3 py-4">
-              <span className="text-center text-base font-medium text-pass">
-                {suggestedText || "—"}
-              </span>
-            </div>
-          )}
           <p className="px-3 py-2.5 text-sm font-medium text-pass">
             {suggestedText || "수정안 없음 — 담당자 확인 필요"}
           </p>
@@ -103,19 +84,12 @@ function SummaryTile({
 }
 
 export function ResultView({ result }: { result: ResultData }) {
-  const { fileName, fileUrl, mimeType, product, lines } = result;
+  const { fileName, product, lines } = result;
   const flaggedCount = lines.filter((l) => l.is_flagged).length;
-  const { pages, loading: previewLoading, error: previewError } =
-    usePageCanvases(fileUrl, mimeType);
 
   let flagCounter = 0;
   const flagNumbers: (number | null)[] = lines.map((line) =>
     line.is_flagged ? ++flagCounter : null,
-  );
-  const markers: Marker[] = lines.flatMap((line, i) =>
-    line.is_flagged && line.page && line.bbox
-      ? [{ page: line.page, bbox: line.bbox, label: flagNumbers[i]! }]
-      : [],
   );
 
   return (
@@ -157,28 +131,6 @@ export function ResultView({ result }: { result: ResultData }) {
           )}
         </section>
 
-        {fileUrl && (
-          <section className="flex flex-col gap-2">
-            <h3 className="text-xs font-bold tracking-wide text-ink-muted">
-              업로드한 파일
-            </h3>
-            {previewLoading && (
-              <p className="text-sm text-ink-muted">파일을 불러오는 중입니다…</p>
-            )}
-            {previewError && (
-              <p className="text-sm text-ink-muted">
-                미리보기를 표시하지 못했습니다. ({previewError})
-              </p>
-            )}
-            <PagePreview pages={pages} markers={markers} />
-            {markers.length > 0 && (
-              <p className="text-xs text-ink-faint">
-                빨간 번호가 아래 상세 내용의 확인 필요 항목과 같은 위치를 가리킵니다.
-              </p>
-            )}
-          </section>
-        )}
-
         {lines.length > 0 && (
           <section className="flex flex-col gap-2">
             <h3 className="text-xs font-bold tracking-wide text-ink-muted">
@@ -209,9 +161,7 @@ export function ResultView({ result }: { result: ResultData }) {
                       text={line.text}
                       suggestedText={line.suggested_text}
                       reason={line.flag_reason}
-                      pages={pages}
                       page={line.page}
-                      bbox={line.bbox}
                     />
                   )}
                 </li>

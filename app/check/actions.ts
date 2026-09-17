@@ -54,8 +54,6 @@ export type CheckState = {
   error?: string;
   documentId?: string;
   fileName?: string;
-  fileUrl?: string;
-  mimeType?: string;
   product?: string | null;
   lines?: ExtractedLine[];
 };
@@ -287,16 +285,10 @@ export async function uploadAndCheck(
 
     await supabase.from("documents").update({ status: "done" }).eq("id", doc.id);
 
-    const { data: signed } = await supabase.storage
-      .from("illustrations")
-      .createSignedUrl(storagePath, 60 * 60);
-
     revalidatePath("/check");
     return {
       documentId: doc.id,
       fileName: file.name,
-      fileUrl: signed?.signedUrl,
-      mimeType: file.type,
       product,
       lines,
     };

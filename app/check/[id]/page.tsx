@@ -14,7 +14,7 @@ export default async function CheckDetailPage({
 
   const { data: doc } = await supabase
     .from("documents")
-    .select("id, original_filename, storage_path, mime_type, product, status")
+    .select("id, original_filename, product, status")
     .eq("id", id)
     .single();
 
@@ -22,13 +22,9 @@ export default async function CheckDetailPage({
 
   const { data: extractions } = await supabase
     .from("text_extractions")
-    .select("text, is_flagged, flag_reason, suggested_text, page, bbox")
+    .select("text, is_flagged, flag_reason, suggested_text, page")
     .eq("document_id", id)
     .order("line_index", { ascending: true });
-
-  const { data: signed } = await supabase.storage
-    .from("illustrations")
-    .createSignedUrl(doc.storage_path, 60 * 60);
 
   const lines: ResultLine[] = (extractions ?? []).map((e) => ({
     text: e.text,
@@ -36,7 +32,6 @@ export default async function CheckDetailPage({
     flag_reason: e.flag_reason,
     suggested_text: e.suggested_text,
     page: e.page,
-    bbox: e.bbox as ResultLine["bbox"],
   }));
 
   return (
@@ -58,8 +53,6 @@ export default async function CheckDetailPage({
           <ResultView
             result={{
               fileName: doc.original_filename,
-              fileUrl: signed?.signedUrl,
-              mimeType: doc.mime_type,
               product: doc.product,
               lines,
             }}

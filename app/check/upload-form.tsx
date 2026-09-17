@@ -58,8 +58,6 @@ export function UploadForm() {
         <ResultView
           result={{
             fileName: state.fileName ?? "",
-            fileUrl: state.fileUrl,
-            mimeType: state.mimeType,
             product: state.product,
             lines: state.lines,
           }}
