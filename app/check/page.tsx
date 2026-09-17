@@ -3,16 +3,30 @@ import { AppHeader } from "../components/app-header";
 import { createClient } from "@/lib/supabase/server";
 import { UploadForm } from "./upload-form";
 
-export default async function CheckPage() {
+export default async function CheckPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ user?: string }>;
+}) {
+  const { user: userFilter } = await searchParams;
   const supabase = await createClient();
 
-  const { data: documents } = await supabase
+  const { data: users } = await supabase
+    .from("user_directory")
+    .select("id, email")
+    .order("email", { ascending: true });
+
+  let query = supabase
     .from("documents")
     .select(
-      "id, original_filename, product, status, created_at, text_extractions(is_flagged)",
+      "id, original_filename, product, status, created_at, user_id, text_extractions(is_flagged)",
     )
     .order("created_at", { ascending: false })
     .limit(20);
+  if (userFilter) query = query.eq("user_id", userFilter);
+  const { data: documents } = await query;
+
+  const emailById = new Map((users ?? []).map((u) => [u.id, u.email]));
 
   return (
     <div className="flex flex-1 flex-col">
@@ -35,6 +49,34 @@ export default async function CheckPage() {
             <h2 className="text-sm font-bold text-ink">검증 이력</h2>
             <span className="text-xs text-ink-faint">최근 20건</span>
           </div>
+
+          {users && users.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              <Link
+                href="/check"
+                className={
+                  !userFilter
+                    ? "rounded-sm bg-brand-700 px-2.5 py-1 text-xs font-medium text-white"
+                    : "rounded-sm border border-line-strong px-2.5 py-1 text-xs text-ink-muted hover:bg-canvas"
+                }
+              >
+                전체
+              </Link>
+              {users.map((u) => (
+                <Link
+                  key={u.id}
+                  href={`/check?user=${u.id}`}
+                  className={
+                    userFilter === u.id
+                      ? "rounded-sm bg-brand-700 px-2.5 py-1 text-xs font-medium text-white"
+                      : "rounded-sm border border-line-strong px-2.5 py-1 text-xs text-ink-muted hover:bg-canvas"
+                  }
+                >
+                  {u.email}
+                </Link>
+              ))}
+            </div>
+          )}
 
           {!documents || documents.length === 0 ? (
             <p className="rounded border border-line bg-surface px-4 py-8 text-center text-sm text-ink-muted">
@@ -60,6 +102,7 @@ export default async function CheckPage() {
                         </span>
                         <span className="text-xs text-ink-faint">
                           {doc.product ? `${doc.product} · ` : ""}
+                          {emailById.get(doc.user_id) ?? "알 수 없음"} ·{" "}
                           {new Date(doc.created_at).toLocaleString("ko-KR")}
                         </span>
                       </div>
