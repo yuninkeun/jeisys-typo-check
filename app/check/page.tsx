@@ -48,7 +48,7 @@ export default async function CheckPage({
   let query = supabase
     .from("documents")
     .select(
-      "id, original_filename, product, status, created_at, user_id, text_extractions(is_flagged)",
+      "id, original_filename, product, status, created_at, user_id, text_extractions(is_flagged, resolution)",
     )
     .order("created_at", { ascending: false });
   if (userFilter) query = query.eq("user_id", userFilter);
@@ -189,10 +189,13 @@ export default async function CheckPage({
             <ul className="divide-y divide-line rounded border border-line bg-surface">
               {documents.map((doc) => {
                 const extractions = doc.text_extractions as
-                  | { is_flagged: boolean }[]
+                  | { is_flagged: boolean; resolution: string | null }[]
                   | null;
-                const flaggedCount =
-                  extractions?.filter((e) => e.is_flagged).length ?? 0;
+                const flagged = extractions?.filter((e) => e.is_flagged) ?? [];
+                const flaggedCount = flagged.length;
+                const handledCount = flagged.filter((e) => e.resolution).length;
+                const allHandled =
+                  flaggedCount > 0 && handledCount === flaggedCount;
                 return (
                   <li key={doc.id}>
                     <Link
@@ -213,9 +216,14 @@ export default async function CheckPage({
                         <span className="shrink-0 rounded-sm border border-line-strong px-2 py-0.5 text-xs text-ink-muted">
                           실패
                         </span>
+                      ) : allHandled ? (
+                        <span className="shrink-0 rounded-sm border border-pass-line bg-pass-soft px-2 py-0.5 text-xs font-medium text-pass">
+                          처리 완료 {handledCount}/{flaggedCount}
+                        </span>
                       ) : flaggedCount > 0 ? (
                         <span className="shrink-0 rounded-sm border border-flag-line bg-flag-soft px-2 py-0.5 text-xs font-medium text-flag">
-                          확인 필요 {flaggedCount}
+                          확인 필요 {flaggedCount - handledCount}
+                          {handledCount > 0 ? ` · 처리 ${handledCount}` : ""}
                         </span>
                       ) : (
                         <span className="shrink-0 rounded-sm border border-pass-line bg-pass-soft px-2 py-0.5 text-xs font-medium text-pass">

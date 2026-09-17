@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 import { uploadAndCheck, type CheckState } from "./actions";
 import { ResultView } from "./result-view";
 
@@ -45,6 +46,33 @@ export function UploadForm() {
           </p>
         )}
 
+        {state.duplicateOf && (
+          <div className="flex flex-col gap-2 rounded border border-line-strong bg-canvas px-3 py-2.5">
+            <p className="text-sm text-ink">
+              같은 파일을{" "}
+              {new Date(state.duplicateOf.checkedAt).toLocaleString("ko-KR")}에 이미
+              검증했습니다. 검증을 다시 실행하지 않았습니다.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href={`/check/${state.duplicateOf.id}`}
+                className="text-sm font-medium text-brand-700 underline hover:text-brand-800"
+              >
+                지난 검증 결과 보기
+              </Link>
+              <button
+                type="submit"
+                name="force"
+                value="1"
+                disabled={pending}
+                className="rounded-sm border border-line-strong px-2.5 py-1 text-xs text-ink-muted hover:bg-surface disabled:opacity-60"
+              >
+                그래도 다시 검증
+              </button>
+            </div>
+          </div>
+        )}
+
         <button
           type="submit"
           disabled={pending}
@@ -60,6 +88,7 @@ export function UploadForm() {
             fileName: state.fileName ?? "",
             product: state.product,
             lines: state.lines,
+            documentId: state.documentId,
           }}
         />
       )}

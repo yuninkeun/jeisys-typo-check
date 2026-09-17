@@ -1,29 +1,103 @@
 "use client";
 
+import { setResolution, type Resolution } from "./actions";
+
 export type ResultLine = {
   text: string;
   is_flagged: boolean;
   flag_reason?: string | null;
   suggested_text?: string | null;
   page?: number | null;
+  resolution?: Resolution | null;
+};
+
+/** How this file compares with the previous check of a file with the same name. */
+export type RevisionComparison = {
+  previousId: string;
+  previousCheckedAt: string;
+  totalPreviousFlags: number;
+  resolvedFlags: number;
+  stillPresent: string[];
 };
 
 export type ResultData = {
   fileName: string;
   product?: string | null;
   lines: ResultLine[];
+  documentId?: string;
+  comparison?: RevisionComparison | null;
 };
+
+function ResolutionButtons({
+  documentId,
+  lineIndex,
+  current,
+}: {
+  documentId: string;
+  lineIndex: number;
+  current?: Resolution | null;
+}) {
+  const options: { value: Resolution; label: string; activeClass: string }[] = [
+    {
+      value: "fixed",
+      label: "수정완료",
+      activeClass: "border-pass-line bg-pass text-white",
+    },
+    {
+      value: "ignored",
+      label: "문제없음",
+      activeClass: "border-line-strong bg-ink-muted text-white",
+    },
+  ];
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {options.map((option) => {
+        const isActive = current === option.value;
+        return (
+          <form key={option.value} action={setResolution}>
+            <input type="hidden" name="documentId" value={documentId} />
+            <input type="hidden" name="lineIndex" value={lineIndex} />
+            <input type="hidden" name="resolution" value={option.value} />
+            <input type="hidden" name="current" value={current ?? ""} />
+            <button
+              type="submit"
+              className={`rounded-sm border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                isActive
+                  ? option.activeClass
+                  : "border-line-strong text-ink-muted hover:bg-surface"
+              }`}
+            >
+              {option.label}
+            </button>
+          </form>
+        );
+      })}
+      {current === "ignored" && (
+        <span className="text-[11px] text-ink-faint">
+          이 표현은 다음 검증부터 지적하지 않습니다
+        </span>
+      )}
+    </div>
+  );
+}
 
 function AsIsToBeCard({
   text,
   suggestedText,
   reason,
   page,
+  documentId,
+  lineIndex,
+  resolution,
 }: {
   text: string;
   suggestedText?: string | null;
   reason?: string | null;
   page?: number | null;
+  documentId?: string;
+  lineIndex: number;
+  resolution?: Resolution | null;
 }) {
   return (
     <div className="flex flex-col gap-2.5 rounded border border-line bg-canvas p-3">
@@ -56,6 +130,13 @@ function AsIsToBeCard({
         </figure>
       </div>
       {reason && <p className="text-xs leading-relaxed text-ink-muted">{reason}</p>}
+      {documentId && (
+        <ResolutionButtons
+          documentId={documentId}
+          lineIndex={lineIndex}
+          current={resolution}
+        />
+      )}
     </div>
   );
 }
@@ -84,8 +165,11 @@ function SummaryTile({
 }
 
 export function ResultView({ result }: { result: ResultData }) {
-  const { fileName, product, lines } = result;
+  const { fileName, product, lines, documentId, comparison } = result;
   const flaggedCount = lines.filter((l) => l.is_flagged).length;
+  const handledCount = lines.filter(
+    (l) => l.is_flagged && l.resolution,
+  ).length;
 
   let flagCounter = 0;
   const flagNumbers: (number | null)[] = lines.map((line) =>
@@ -119,6 +203,12 @@ export function ResultView({ result }: { result: ResultData }) {
               tone="pass"
             />
           </div>
+          {flaggedCount > 0 && documentId && (
+            <p className="text-xs text-ink-muted">
+              확인 필요 {flaggedCount}건 중 {handledCount}건 처리됨 — 각 항목에서
+              &quot;수정완료&quot; 또는 &quot;문제없음&quot;을 눌러 기록할 수 있습니다.
+            </p>
+          )}
           {!product && (
             <p className="text-xs text-ink-muted">
               파일명에서 제품명을 인식하지 못해 과거 이력 비교는 수행되지 않았습니다.
@@ -130,6 +220,35 @@ export function ResultView({ result }: { result: ResultData }) {
             </p>
           )}
         </section>
+
+        {comparison && (
+          <section className="flex flex-col gap-2 rounded border border-line bg-canvas p-4">
+            <h3 className="text-xs font-bold tracking-wide text-ink-muted">
+              지난 검증과 비교
+            </h3>
+            <p className="text-sm text-ink">
+              같은 이름의 파일을{" "}
+              {new Date(comparison.previousCheckedAt).toLocaleDateString("ko-KR")}에
+              검증했을 때 지적된 {comparison.totalPreviousFlags}건 중{" "}
+              <strong className="text-pass">{comparison.resolvedFlags}건</strong>이 이번
+              파일에서 사라졌습니다.
+            </p>
+            {comparison.stillPresent.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-medium text-flag">
+                  아직 그대로인 항목 {comparison.stillPresent.length}건
+                </p>
+                <ul className="flex flex-col gap-0.5">
+                  {comparison.stillPresent.map((text, i) => (
+                    <li key={i} className="text-xs text-ink-muted">
+                      · {text}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
 
         {lines.length > 0 && (
           <section className="flex flex-col gap-2">
@@ -155,6 +274,11 @@ export function ResultView({ result }: { result: ResultData }) {
                       {line.is_flagged ? "확인 필요" : "정상"}
                     </span>
                     <span className="text-sm text-ink">{line.text}</span>
+                    {line.resolution && (
+                      <span className="ml-auto mt-0.5 shrink-0 rounded-sm border border-line-strong px-1.5 py-0.5 text-[11px] font-medium text-ink-muted">
+                        {line.resolution === "fixed" ? "수정완료" : "문제없음"}
+                      </span>
+                    )}
                   </div>
                   {line.is_flagged && (
                     <AsIsToBeCard
@@ -162,6 +286,9 @@ export function ResultView({ result }: { result: ResultData }) {
                       suggestedText={line.suggested_text}
                       reason={line.flag_reason}
                       page={line.page}
+                      documentId={documentId}
+                      lineIndex={i}
+                      resolution={line.resolution}
                     />
                   )}
                 </li>

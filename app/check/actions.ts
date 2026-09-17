@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
@@ -56,7 +57,11 @@ export type CheckState = {
   fileName?: string;
   product?: string | null;
   lines?: ExtractedLine[];
+  /** Set when the exact same file was already checked, so it wasn't re-run. */
+  duplicateOf?: { id: string; fileName: string; checkedAt: string };
 };
+
+export type Resolution = "fixed" | "ignored";
 
 const SYSTEM_PROMPT = `당신은 의료기기 회사(제이시스메디칼)의 제품 스티커·라벨·리플렛 인쇄용 일러스트 파일에서 오탈자를 찾는 검수자입니다.
 
@@ -137,12 +142,47 @@ async function checkConsistencyAgainstHistory(
   return results;
 }
 
-function buildHistoryContext(priorLines: string[]) {
-  return priorLines.length > 0
-    ? `과거에 확인된 유사 텍스트 (참고용, 표기가 다르면 지적하세요):\n${priorLines
-        .map((t) => `- ${t}`)
-        .join("\n")}`
-    : "과거에 확인된 유사 텍스트가 없습니다. 이번이 첫 확인입니다.";
+/** Texts a reviewer explicitly marked "문제없음" on an earlier check of the same
+ *  product. Without this the model keeps re-raising the same false alarm — a real
+ *  product variant ("Model : Sharp Basic") reads like a typo of its sibling. */
+async function findIgnoredTextsForProduct(
+  supabase: SupabaseServerClient,
+  product: string | null,
+) {
+  if (!product) return [] as string[];
+  const { data } = await supabase
+    .from("text_extractions")
+    .select("text, documents!inner(product)")
+    .eq("resolution", "ignored")
+    .eq("documents.product", product)
+    .limit(200);
+  return [...new Set((data ?? []).map((row) => row.text))];
+}
+
+/** The allowlist is enforced here rather than trusted to the prompt, so an
+ *  already-cleared expression can never be flagged again. */
+function suppressIgnoredLines(lines: ExtractedLine[], ignoredTexts: string[]) {
+  if (ignoredTexts.length === 0) return lines;
+  const ignored = new Set(ignoredTexts.map((t) => t.trim()));
+  return lines.map((line) =>
+    line.is_flagged && ignored.has(line.text.trim())
+      ? { ...line, is_flagged: false, flag_reason: undefined, suggested_text: undefined }
+      : line,
+  );
+}
+
+function buildHistoryContext(priorLines: string[], ignoredTexts: string[]) {
+  const history =
+    priorLines.length > 0
+      ? `과거에 확인된 유사 텍스트 (참고용, 표기가 다르면 지적하세요):\n${priorLines
+          .map((t) => `- ${t}`)
+          .join("\n")}`
+      : "과거에 확인된 유사 텍스트가 없습니다. 이번이 첫 확인입니다.";
+
+  if (ignoredTexts.length === 0) return history;
+  return `${history}\n\n담당자가 "정상 표기"로 확인한 표현입니다. 아래 표현은 오탈자로 지적하지 마세요:\n${ignoredTexts
+    .map((t) => `- ${t}`)
+    .join("\n")}`;
 }
 
 async function extractWithOpenAI(
@@ -225,6 +265,31 @@ export async function uploadAndCheck(
   const supabase = await createClient();
   const arrayBuffer = await file.arrayBuffer();
   const bytes = new Uint8Array(arrayBuffer);
+  const contentHash = createHash("sha256").update(bytes).digest("hex");
+
+  // A byte-identical file can only produce the identical result, so point at the
+  // earlier check instead of paying for another extraction. "force" re-runs it.
+  if (formData.get("force") !== "1") {
+    const { data: alreadyChecked } = await supabase
+      .from("documents")
+      .select("id, original_filename, created_at")
+      .eq("content_hash", contentHash)
+      .eq("status", "done")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (alreadyChecked) {
+      return {
+        duplicateOf: {
+          id: alreadyChecked.id,
+          fileName: alreadyChecked.original_filename,
+          checkedAt: alreadyChecked.created_at,
+        },
+      };
+    }
+  }
+
   // Supabase Storage keys must be ASCII-safe; the original (possibly Korean/
   // bracketed) filename is preserved separately in documents.original_filename.
   const extMatch = file.name.match(/\.[a-zA-Z0-9]+$/);
@@ -249,6 +314,7 @@ export async function uploadAndCheck(
       product,
       model_used: MODEL,
       status: "processing",
+      content_hash: contentHash,
     })
     .select("id")
     .single();
@@ -258,13 +324,17 @@ export async function uploadAndCheck(
   }
 
   try {
-    const priorLines = await findHistoryForProduct(supabase, product);
+    const [priorLines, ignoredTexts] = await Promise.all([
+      findHistoryForProduct(supabase, product),
+      findIgnoredTextsForProduct(supabase, product),
+    ]);
     const extracted = await extractWithOpenAI(
       file,
       bytes,
-      buildHistoryContext(priorLines),
+      buildHistoryContext(priorLines, ignoredTexts),
     );
-    const lines = await checkConsistencyAgainstHistory(supabase, extracted);
+    const checked = await checkConsistencyAgainstHistory(supabase, extracted);
+    const lines = suppressIgnoredLines(checked, ignoredTexts);
 
     if (lines.length > 0) {
       const rows = lines.map((line, index) => ({
@@ -302,4 +372,33 @@ export async function uploadAndCheck(
       documentId: doc.id,
     };
   }
+}
+
+/** Records what the reviewer did about a flagged line. Submitting the resolution
+ *  it already has clears it, so a mis-click is undone by clicking the same button. */
+export async function setResolution(formData: FormData) {
+  const user = await assertSignedIn();
+  const documentId = String(formData.get("documentId") ?? "");
+  const lineIndex = Number(formData.get("lineIndex"));
+  const requested = String(formData.get("resolution") ?? "");
+  const current = String(formData.get("current") ?? "");
+
+  if (!documentId || !Number.isInteger(lineIndex)) return;
+  if (requested !== "fixed" && requested !== "ignored") return;
+
+  const resolution = current === requested ? null : requested;
+  const supabase = await createClient();
+
+  await supabase
+    .from("text_extractions")
+    .update({
+      resolution,
+      resolved_at: resolution ? new Date().toISOString() : null,
+      resolved_by: resolution ? user.id : null,
+    })
+    .eq("document_id", documentId)
+    .eq("line_index", lineIndex);
+
+  revalidatePath(`/check/${documentId}`);
+  revalidatePath("/check");
 }
