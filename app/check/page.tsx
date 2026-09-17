@@ -3,12 +3,39 @@ import { AppHeader } from "../components/app-header";
 import { createClient } from "@/lib/supabase/server";
 import { UploadForm } from "./upload-form";
 
+const MAX_RANGE_DAYS = 182; // ~6 months
+
+function toDateInputValue(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+/** Clamps an optional [from, to] date-string pair to at most a 6-month span
+ *  ending no later than today, so a hand-edited URL can't request more. */
+function resolveDateRange(from?: string, to?: string) {
+  if (!from && !to) return null;
+
+  const today = new Date();
+  const parsedTo = to ? new Date(to) : today;
+  const effectiveTo = Number.isNaN(parsedTo.getTime()) ? today : parsedTo;
+
+  const minFrom = new Date(effectiveTo);
+  minFrom.setDate(minFrom.getDate() - MAX_RANGE_DAYS);
+
+  const parsedFrom = from ? new Date(from) : minFrom;
+  const effectiveFrom =
+    Number.isNaN(parsedFrom.getTime()) || parsedFrom < minFrom
+      ? minFrom
+      : parsedFrom;
+
+  return { from: effectiveFrom, to: effectiveTo };
+}
+
 export default async function CheckPage({
   searchParams,
 }: {
-  searchParams: Promise<{ user?: string }>;
+  searchParams: Promise<{ user?: string; from?: string; to?: string }>;
 }) {
-  const { user: userFilter } = await searchParams;
+  const { user: userFilter, from: fromParam, to: toParam } = await searchParams;
   const supabase = await createClient();
 
   const { data: users } = await supabase
@@ -16,17 +43,32 @@ export default async function CheckPage({
     .select("id, email")
     .order("email", { ascending: true });
 
+  const range = resolveDateRange(fromParam, toParam);
+
   let query = supabase
     .from("documents")
     .select(
       "id, original_filename, product, status, created_at, user_id, text_extractions(is_flagged)",
     )
-    .order("created_at", { ascending: false })
-    .limit(20);
+    .order("created_at", { ascending: false });
   if (userFilter) query = query.eq("user_id", userFilter);
+  if (range) {
+    const rangeEnd = new Date(range.to);
+    rangeEnd.setHours(23, 59, 59, 999);
+    query = query
+      .gte("created_at", range.from.toISOString())
+      .lte("created_at", rangeEnd.toISOString())
+      .limit(500);
+  } else {
+    query = query.limit(20);
+  }
   const { data: documents } = await query;
 
   const emailById = new Map((users ?? []).map((u) => [u.id, u.email]));
+
+  const today = new Date();
+  const minSelectableDate = new Date(today);
+  minSelectableDate.setDate(minSelectableDate.getDate() - MAX_RANGE_DAYS);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -47,13 +89,21 @@ export default async function CheckPage({
         <section className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between">
             <h2 className="text-sm font-bold text-ink">검증 이력</h2>
-            <span className="text-xs text-ink-faint">최근 20건</span>
+            <span className="text-xs text-ink-faint">
+              {range
+                ? `${toDateInputValue(range.from)} ~ ${toDateInputValue(range.to)}`
+                : "최근 20건"}
+            </span>
           </div>
 
           {users && users.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               <Link
-                href="/check"
+                href={
+                  fromParam || toParam
+                    ? `/check?from=${fromParam ?? ""}&to=${toParam ?? ""}`
+                    : "/check"
+                }
                 className={
                   !userFilter
                     ? "rounded-sm bg-brand-700 px-2.5 py-1 text-xs font-medium text-white"
@@ -65,7 +115,9 @@ export default async function CheckPage({
               {users.map((u) => (
                 <Link
                   key={u.id}
-                  href={`/check?user=${u.id}`}
+                  href={`/check?user=${u.id}${
+                    fromParam ? `&from=${fromParam}` : ""
+                  }${toParam ? `&to=${toParam}` : ""}`}
                   className={
                     userFilter === u.id
                       ? "rounded-sm bg-brand-700 px-2.5 py-1 text-xs font-medium text-white"
@@ -77,6 +129,57 @@ export default async function CheckPage({
               ))}
             </div>
           )}
+
+          <form
+            action="/check"
+            method="get"
+            className="flex flex-wrap items-end gap-2 rounded border border-line bg-canvas p-3"
+          >
+            {userFilter && <input type="hidden" name="user" value={userFilter} />}
+            <div className="flex flex-col gap-1">
+              <label htmlFor="from" className="text-xs text-ink-muted">
+                시작일
+              </label>
+              <input
+                type="date"
+                id="from"
+                name="from"
+                defaultValue={fromParam}
+                min={toDateInputValue(minSelectableDate)}
+                max={toDateInputValue(today)}
+                className="rounded border border-line-strong bg-white px-2 py-1 text-xs text-ink"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="to" className="text-xs text-ink-muted">
+                종료일
+              </label>
+              <input
+                type="date"
+                id="to"
+                name="to"
+                defaultValue={toParam}
+                min={toDateInputValue(minSelectableDate)}
+                max={toDateInputValue(today)}
+                className="rounded border border-line-strong bg-white px-2 py-1 text-xs text-ink"
+              />
+            </div>
+            <button
+              type="submit"
+              className="h-[30px] rounded bg-brand-700 px-3 text-xs font-medium text-white hover:bg-brand-800"
+            >
+              기간 검색
+            </button>
+            {range && (
+              <Link
+                href={userFilter ? `/check?user=${userFilter}` : "/check"}
+                className="text-xs text-ink-muted underline hover:text-ink"
+              >
+                기간 초기화
+              </Link>
+            )}
+            <span className="text-xs text-ink-faint">최대 6개월까지 조회 가능</span>
+          </form>
 
           {!documents || documents.length === 0 ? (
             <p className="rounded border border-line bg-surface px-4 py-8 text-center text-sm text-ink-muted">
