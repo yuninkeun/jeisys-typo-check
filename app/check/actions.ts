@@ -3,8 +3,8 @@
 import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { MAX_FILE_BYTES, fileTooLargeMessage } from "./limits";
 
-const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "application/pdf"]);
 const MODEL = "gpt-4o";
 
@@ -258,7 +258,7 @@ export async function uploadAndCheck(
     return { error: "PNG, JPG, PDF 파일만 업로드할 수 있습니다." };
   }
   if (file.size > MAX_FILE_BYTES) {
-    return { error: "파일 용량은 25MB를 넘을 수 없습니다." };
+    return { error: fileTooLargeMessage(file.size) };
   }
 
   const product = detectProductFromFilename(file.name);
