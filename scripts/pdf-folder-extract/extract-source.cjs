@@ -8,6 +8,18 @@ const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
 const { pathToFileURL } = require("url");
+
+// pdf-parse unconditionally constructs `new DOMMatrix()` at module load time
+// for a canvas-rendering path we never use (we only call getText()). It
+// normally gets a real DOMMatrix from the optional native `@napi-rs/canvas`
+// package; we don't ship that (platform-specific binary), so stub the
+// handful of browser globals it checks for just enough to not crash.
+for (const name of ["DOMMatrix", "ImageData", "Path2D"]) {
+  if (typeof globalThis[name] === "undefined") {
+    globalThis[name] = class {};
+  }
+}
+
 const { PDFParse } = require("pdf-parse");
 
 // pdf.js lazily loads a worker module at runtime via a relative dynamic
