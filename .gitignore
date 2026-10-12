@@ -47,7 +47,8 @@ next-env.d.ts
 scripts/.daily-report-state.json
 
 # pdf-folder-extract: built artifacts, regenerate with build.cjs and
-# distribute the .exe directly (too large/binary for git history)
+# distribute the folder directly (node.exe is too large/binary for git history)
 scripts/pdf-folder-extract/extract-bundle.cjs
-scripts/pdf-folder-extract/sea-prep.blob
-scripts/pdf-folder-extract/pdf-folder-extract.exe
+scripts/pdf-folder-extract/node.exe
+scripts/pdf-folder-extract/run.bat
+scripts/pdf-folder-extract/*.zip

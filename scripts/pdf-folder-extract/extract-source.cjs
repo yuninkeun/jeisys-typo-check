@@ -1,5 +1,5 @@
 // Standalone PDF folder text extractor.
-// Drag a folder onto the built .exe, or double-click it and paste a folder path.
+// Drag a folder onto run.bat, or double-click it and paste a folder path.
 // Recursively finds every .pdf under the folder and writes a CSV of extracted
 // text (one row per page) into that same folder. No network access, no login
 // — this never leaves the PC it runs on.
@@ -11,17 +11,9 @@ const { pathToFileURL } = require("url");
 const { PDFParse } = require("pdf-parse");
 
 // pdf.js lazily loads a worker module at runtime via a relative dynamic
-// import, which can't resolve once this script is bundled into one file or
-// embedded in a packaged .exe. Point it at the copy we ship next to the
-// bundle/executable instead (see build.cjs).
-let sea = null;
-try {
-  sea = require("node:sea");
-} catch {
-  // not running under Node's Single Executable Application runtime
-}
-const baseDir = sea && sea.isSea() ? path.dirname(process.execPath) : __dirname;
-PDFParse.setWorker(pathToFileURL(path.join(baseDir, "pdf.worker.mjs")).href);
+// import, which can't resolve once this script is bundled into one file.
+// Point it at the copy shipped next to this bundle instead (see build.cjs).
+PDFParse.setWorker(pathToFileURL(path.join(__dirname, "pdf.worker.mjs")).href);
 
 function findPdfFiles(dir) {
   const files = [];

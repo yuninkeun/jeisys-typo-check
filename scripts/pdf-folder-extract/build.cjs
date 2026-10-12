@@ -1,6 +1,11 @@
-// Rebuilds pdf-folder-extract.exe from extract-source.cjs.
+// Rebuilds the pdf-folder-extract distribution folder from extract-source.cjs.
 // Run with: node scripts/pdf-folder-extract/build.cjs
-// Requires network access once, to fetch esbuild/postject via npx.
+// Requires network access once, to fetch esbuild via npx.
+//
+// Ships the *unmodified* node.exe (so its signature stays valid and it
+// doesn't look like a repacked binary to antivirus/EDR) alongside a plain
+// run.bat launcher, instead of injecting our code into a copy of node.exe
+// (that approach got flagged/killed by endpoint security on other PCs).
 
 const { execFileSync } = require("child_process");
 const fs = require("fs");
@@ -10,7 +15,7 @@ const dir = __dirname;
 const run = (cmd, args) =>
   execFileSync(cmd, args, { cwd: dir, stdio: "inherit", shell: true });
 
-console.log("1/4 bundling extract-source.cjs...");
+console.log("1/3 bundling extract-source.cjs...");
 run("npx", [
   "--yes", "esbuild",
   "extract-source.cjs",
@@ -20,22 +25,15 @@ run("npx", [
   "--outfile=extract-bundle.cjs",
 ]);
 
-console.log("2/4 writing SEA blob...");
-fs.rmSync(path.join(dir, "sea-prep.blob"), { force: true });
-run("node", ["--experimental-sea-config", "sea-config.json"]);
+console.log("2/3 copying unmodified node.exe...");
+fs.copyFileSync(process.execPath, path.join(dir, "node.exe"));
 
-console.log("3/4 copying node.exe...");
-const exePath = path.join(dir, "pdf-folder-extract.exe");
-fs.rmSync(exePath, { force: true });
-fs.copyFileSync(process.execPath, exePath);
+console.log("3/3 writing run.bat...");
+fs.writeFileSync(
+  path.join(dir, "run.bat"),
+  '@echo off\r\n"%~dp0node.exe" "%~dp0extract-bundle.cjs" %1\r\npause\r\n',
+);
 
-console.log("4/4 injecting blob...");
-run("npx", [
-  "--yes", "postject",
-  "pdf-folder-extract.exe",
-  "NODE_SEA_BLOB",
-  "sea-prep.blob",
-  "--sentinel-fuse", "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2",
-]);
-
-console.log("\nDone: pdf-folder-extract.exe (ship it together with pdf.worker.mjs in this folder)");
+console.log(
+  "\nDone. Distribute node.exe, run.bat, extract-bundle.cjs, and pdf.worker.mjs together.",
+);
