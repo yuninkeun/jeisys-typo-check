@@ -76,12 +76,20 @@ export default async function CheckPage({
 
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-10 px-6 py-10">
         <section className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-xl font-bold text-ink">파일 검증</h1>
-            <p className="text-sm text-ink-muted">
-              인쇄 전 일러스트 파일의 TEXT를 추출해 오탈자와 과거 이력과의 표기
-              차이를 확인합니다.
-            </p>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-xl font-bold text-ink">파일 검증</h1>
+              <p className="text-sm text-ink-muted">
+                인쇄 전 일러스트 파일의 TEXT를 추출해 오탈자와 과거 이력과의
+                표기 차이를 확인합니다.
+              </p>
+            </div>
+            <Link
+              href="/check/batch"
+              className="shrink-0 text-xs text-ink-muted underline hover:text-ink"
+            >
+              폴더 일괄 PDF→CSV 추출 →
+            </Link>
           </div>
           <UploadForm />
         </section>

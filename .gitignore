@@ -42,3 +42,12 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# daily report local state (not for version control)
+scripts/.daily-report-state.json
+
+# pdf-folder-extract: built artifacts, regenerate with build.cjs and
+# distribute the .exe directly (too large/binary for git history)
+scripts/pdf-folder-extract/extract-bundle.cjs
+scripts/pdf-folder-extract/sea-prep.blob
+scripts/pdf-folder-extract/pdf-folder-extract.exe
