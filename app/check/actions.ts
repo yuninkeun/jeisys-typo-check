@@ -195,7 +195,8 @@ async function extractWithOpenAI(
     file.type === "application/pdf"
       ? {
           type: "input_file" as const,
-          filename: file.name,
+          // .ai files are PDF-compatible; the API decides by extension.
+          filename: file.name.replace(/\.ai$/i, ".pdf"),
           file_data: `data:application/pdf;base64,${base64}`,
         }
       : {
@@ -372,6 +373,38 @@ export async function uploadAndCheck(
       documentId: doc.id,
     };
   }
+}
+
+/** Lines of an earlier check, for showing a duplicate upload's result in place. */
+export async function getCheckResult(documentId: string): Promise<CheckState> {
+  await assertSignedIn();
+  const supabase = await createClient();
+  const { data: doc } = await supabase
+    .from("documents")
+    .select("id, original_filename, product")
+    .eq("id", documentId)
+    .maybeSingle();
+  if (!doc) return { error: "지난 검증 결과를 찾지 못했습니다." };
+
+  const { data: rows } = await supabase
+    .from("text_extractions")
+    .select("text, is_flagged, flag_reason, suggested_text, page, bbox")
+    .eq("document_id", documentId)
+    .order("line_index", { ascending: true });
+
+  return {
+    documentId: doc.id,
+    fileName: doc.original_filename,
+    product: doc.product,
+    lines: (rows ?? []).map((r) => ({
+      text: r.text,
+      is_flagged: r.is_flagged,
+      flag_reason: r.flag_reason ?? undefined,
+      suggested_text: r.suggested_text ?? undefined,
+      page: r.page ?? undefined,
+      bbox: r.bbox ?? undefined,
+    })),
+  };
 }
 
 /** Records what the reviewer did about a flagged line. Submitting the resolution

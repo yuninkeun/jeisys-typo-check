@@ -17,6 +17,14 @@ export async function AppHeader() {
         </Link>
 
         <div className="flex items-center gap-4">
+          <nav className="flex items-center gap-3 text-sm">
+            <Link href="/check" className="text-brand-100 hover:text-white">
+              파일 검증
+            </Link>
+            <Link href="/explorer" className="text-brand-100 hover:text-white">
+              폴더 탐색
+            </Link>
+          </nav>
           <span className="hidden text-sm text-brand-100 sm:inline">
             {user?.email}
           </span>
