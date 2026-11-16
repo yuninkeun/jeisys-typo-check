@@ -366,6 +366,8 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
     filter === "flagged" ? l.is_flagged : filter === "changed" ? isChanged(i) : true,
   );
   const canScript = entry.ext === "ai" || entry.ext === "pdf";
+  const now = new Date();
+  const today = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
 
   return (
     <article className="flex flex-col overflow-hidden rounded border border-line bg-surface">
@@ -536,14 +538,15 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
             </section>
 
             <section className="flex flex-col gap-2 rounded border border-brand-200 bg-brand-50 p-4">
-              <h3 className="text-sm font-bold text-brand-800">Illustrator에서 텍스트 수정하기</h3>
+              <h3 className="text-sm font-bold text-brand-800">Illustrator에 수정 적용하기</h3>
               {canScript ? (
                 <>
                   <ol className="list-decimal pl-5 text-xs leading-relaxed text-ink-muted">
-                    <li>아래 버튼으로 수정 스크립트(.jsx)를 받습니다.</li>
+                    <li>아래 <b>수정 스크립트 적용</b> 버튼으로 스크립트(.jsx)를 받습니다.</li>
                     <li>Illustrator에서 <b>{entry.name}</b> 파일을 엽니다.</li>
                     <li>파일 &gt; 스크립트 &gt; 기타 스크립트…(Ctrl+F12)에서 받은 .jsx를 선택합니다.</li>
-                    <li>바뀐 내용을 확인하고 직접 저장합니다. 윤곽선으로 바뀐 글자는 &quot;못 찾음&quot;으로 알려 줍니다.</li>
+                    <li>바뀐 글자만 다시 쓰므로 폰트·색상·크기는 그대로입니다. 적용이 끝나면 원본과 같은 폴더에 <b>{entry.name.replace(/\.[^.]+$/, "")}_{today}.ai</b> 완성본으로 자동 저장되고, 원본은 그대로 남습니다.</li>
+                    <li>윤곽선으로 바뀐 글자는 고칠 수 없어 &quot;못 찾음&quot;으로 알려 줍니다.</li>
                   </ol>
                   <button
                     type="button"
@@ -551,7 +554,7 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
                     onClick={() => download(buildIllustratorScript(entry.name, fixes), scriptFileName(entry.name))}
                     className="h-10 w-fit rounded bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50"
                   >
-                    수정 스크립트 받기 ({fixes.length}건)
+                    수정 스크립트 적용 ({fixes.length}건)
                   </button>
                 </>
               ) : (

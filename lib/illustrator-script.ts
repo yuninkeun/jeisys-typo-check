@@ -132,7 +132,14 @@ function main() {
       !confirm("이 스크립트는 '" + EXPECTED_FILE + "'용입니다.\n지금 열린 문서는 '" + doc.name + "'입니다.\n그래도 적용할까요?")) {
     return;
   }
-  if (!confirm("오타 수정 " + FIXES.length + "건을 '" + doc.name + "'에 적용합니다.\n(저장은 하지 않습니다. 결과를 확인한 뒤 직접 저장하세요.)")) {
+  var folder = null;
+  try { folder = doc.path; } catch (e) { folder = null; }
+  if (!folder || !folder.exists) {
+    alert("이 문서는 아직 저장된 적이 없어 저장할 폴더를 알 수 없습니다.\n원본 파일을 연 상태에서 다시 실행해 주세요.");
+    return;
+  }
+  var target = completedFile(folder, doc.name);
+  if (!confirm("오타 수정 " + FIXES.length + "건을 '" + doc.name + "'에 적용하고\n같은 폴더에 '" + decodeURI(target.name) + "'(으)로 저장합니다.\n원본 파일은 그대로 둡니다.")) {
     return;
   }
   var r = applyFixes(doc, FIXES);
@@ -141,8 +148,34 @@ function main() {
   if (r.applied.length) msg += "\n\n[적용됨]\n" + r.applied.join("\n");
   if (r.missing.length) msg += "\n\n[못 찾음 — 윤곽선으로 바뀐 글자이거나 표기가 다릅니다. 직접 수정하세요]\n" + r.missing.join("\n");
   if (r.failed.length) msg += "\n\n[실패]\n" + r.failed.join("\n");
-  msg += "\n\n확인 후 저장하세요. 되돌리려면 Ctrl+Z.";
+  if (r.applied.length === 0) {
+    alert(msg + "\n\n바뀐 글자가 없어 새 파일을 저장하지 않았습니다.");
+    return;
+  }
+  try {
+    var opts = new IllustratorSaveOptions();
+    // Keep the PDF part so the typo checker can preview and compare the result.
+    opts.pdfCompatible = true;
+    opts.embedLinkedFiles = false;
+    opts.fontSubsetThreshold = 100;
+    doc.saveAs(target, opts);
+    msg += "\n\n[저장 완료]\n" + decodeURI(target.fsName) +
+           "\n원본은 그대로 두었습니다. 지금 열린 문서는 새로 저장한 완성본입니다.";
+  } catch (e) {
+    msg += "\n\n[저장 실패] " + e + "\n파일 > 다른 이름으로 저장으로 직접 저장해 주세요.";
+  }
   alert(msg);
+}
+
+/** "<name>_YYYYMMDD.ai" next to the original; adds _2, _3… if that file exists. */
+function completedFile(folder, name) {
+  var d = new Date();
+  var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+  var stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+  var base = decodeURI(name).replace(/\.[^.]+$/, "");
+  var f = new File(folder.fsName + "/" + base + "_" + stamp + ".ai");
+  for (var n = 2; f.exists && n < 100; n++) f = new File(folder.fsName + "/" + base + "_" + stamp + "_" + n + ".ai");
+  return f;
 }
 `;
 
@@ -152,7 +185,7 @@ export function buildIllustratorScript(fileName: string, fixes: TextFix[]): stri
     `// 대상 파일: ${fileName}`,
     `// 생성: ${new Date().toLocaleString("ko-KR")}`,
     "// 사용법: Illustrator에서 대상 파일을 연 뒤 파일 > 스크립트 > 기타 스크립트… 에서 이 파일을 선택합니다.",
-    "// 텍스트만 바꾸며, 폰트·색상·위치는 그대로 둡니다. 파일은 저장하지 않습니다.",
+    "// 바뀐 글자만 다시 쓰므로 폰트·색상·크기·위치는 그대로 유지됩니다. 적용 후 같은 폴더에 원본이름_오늘날짜.ai로 저장하고, 원본은 건드리지 않습니다.",
     "",
     "#target illustrator",
     `var EXPECTED_FILE = ${toEs3Literal(fileName)};`,
