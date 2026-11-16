@@ -7,6 +7,7 @@ import { MAX_FILE_BYTES } from "../check/limits";
 import { buildIllustratorScript, scriptFileName, type TextFix } from "@/lib/illustrator-script";
 import { formatSize, type FileEntry } from "./file-tree";
 import { openPdf, pageAsJpeg, renderPage } from "./pdf-render";
+import { XmpEditor } from "./xmp-editor";
 
 type Line = NonNullable<CheckState["lines"]>[number];
 type Edit = { on: boolean; to: string };
@@ -396,6 +397,8 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
             />
           </div>
         )}
+        {isPdf && <XmpEditor entry={entry} />}
+
         {compareMsg && !revised && (
           <p className="rounded border border-line-strong bg-canvas px-3 py-2 text-xs text-ink-muted">{compareMsg}</p>
         )}
