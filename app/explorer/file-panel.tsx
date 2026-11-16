@@ -6,7 +6,7 @@ import { getCheckResult, uploadAndCheck, type CheckState } from "../check/action
 import { MAX_FILE_BYTES } from "../check/limits";
 import { buildIllustratorScript, scriptFileName, type TextFix } from "@/lib/illustrator-script";
 import { formatSize, type FileEntry } from "./file-tree";
-import { openPdf, pageAsJpeg, renderPage } from "./pdf-render";
+import { extractLines, openPdf, pageAsJpeg, renderPage } from "./pdf-render";
 import { XmpEditor } from "./xmp-editor";
 
 type Line = NonNullable<CheckState["lines"]>[number];
@@ -180,7 +180,10 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
   const [note, setNote] = useState<string | null>(null);
   const [result, setResult] = useState<CheckState | null>(null);
   const [edits, setEdits] = useState<Map<number, Edit>>(new Map());
-  const [showNormal, setShowNormal] = useState(false);
+  const [filter, setFilter] = useState<"all" | "flagged" | "changed">("all");
+  // The file's own text, read in the browser before (or without) the AI check.
+  const [localLines, setLocalLines] = useState<Line[] | null>(null);
+  const [extractMsg, setExtractMsg] = useState<string | null>(null);
 
   // Before/after: the version as first opened here, and the one saved later in Illustrator.
   const isPdf = entry.ext === "pdf" || entry.ext === "ai";
@@ -199,10 +202,23 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
   useEffect(() => {
     let cancelled = false;
     snapshot(entry)
-      .then((s) => {
+      .then(async (s) => {
         if (cancelled) return;
         originalRef.current = s;
         setOriginal(s);
+        if (entry.ext !== "pdf" && entry.ext !== "ai") return;
+        try {
+          const found = await extractLines(s.blob);
+          if (cancelled) return;
+          setLocalLines(found.map((l) => ({ text: l.text, page: l.page, is_flagged: false })));
+          setExtractMsg(
+            found.length === 0
+              ? "파일에서 글자를 찾지 못했습니다. 글자가 윤곽선(아웃라인)으로 바뀌었을 수 있습니다. 오타 검사를 누르면 그림에서 글자를 읽어 봅니다."
+              : null,
+          );
+        } catch {
+          if (!cancelled) setExtractMsg("파일에서 글자를 읽지 못했습니다. 오타 검사로 확인해 주세요.");
+        }
       })
       .catch(() => {
         if (!cancelled) setOriginal({ blob: new Blob(), modified: 0 });
@@ -266,12 +282,23 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
   }
 
   function showResult(state: CheckState) {
+    // Keep fixes typed in before the check, matched by the original text.
+    const kept = new Map<string, Edit>();
+    edits.forEach((edit, i) => {
+      const line = lines[i];
+      if (line && edit.on && edit.to !== line.text) kept.set(line.text, edit);
+    });
     setResult(state);
     const next = new Map<number, Edit>();
     state.lines?.forEach((line, i) => {
-      // Unticked by default: AI suggestions are often wrong (e.g. splitting names),
+      const prev = kept.get(line.text);
+      if (prev) {
+        next.set(i, prev);
+        kept.delete(line.text);
+      }
+      // Not applied by default: AI suggestions are often wrong (e.g. splitting names),
       // and these go into print files, so each fix is a deliberate choice.
-      if (line.is_flagged) next.set(i, { on: false, to: line.suggested_text ?? line.text });
+      else if (line.is_flagged) next.set(i, { on: false, to: line.suggested_text ?? line.text });
     });
     setEdits(next);
   }
@@ -323,14 +350,21 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
     });
   }
 
-  const lines = result?.lines ?? [];
+  const lines = result?.lines ?? localLines ?? [];
   const fixes: TextFix[] = [];
   edits.forEach((edit, i) => {
     const line = lines[i];
     if (line && edit.on && edit.to !== line.text) fixes.push({ from: line.text, to: edit.to });
   });
-  const flagged = lines.map((l, i) => [l, i] as const).filter(([l]) => l.is_flagged);
-  const normal = lines.map((l, i) => [l, i] as const).filter(([l]) => !l.is_flagged);
+  const isChanged = (i: number) => {
+    const e = edits.get(i);
+    return !!e && e.on && e.to !== lines[i]?.text;
+  };
+  const all = lines.map((l, i) => [l, i] as const);
+  const flaggedCount = all.filter(([l]) => l.is_flagged).length;
+  const shown = all.filter(([l, i]) =>
+    filter === "flagged" ? l.is_flagged : filter === "changed" ? isChanged(i) : true,
+  );
   const canScript = entry.ext === "ai" || entry.ext === "pdf";
 
   return (
@@ -435,16 +469,20 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
           </p>
         )}
 
-        {result && (
+        {extractMsg && !result && (
+          <p className="rounded border border-line-strong bg-canvas px-3 py-2 text-xs text-ink-muted">{extractMsg}</p>
+        )}
+
+        {lines.length > 0 && (
           <>
             <div className="grid grid-cols-3 gap-2">
               <div className="rounded border border-line px-4 py-3">
                 <div className="text-2xl font-bold tabular-nums text-ink">{lines.length}</div>
-                <div className="text-xs text-ink-muted">추출된 줄</div>
+                <div className="text-xs text-ink-muted">{result ? "추출된 줄" : "파일 속 글자 줄"}</div>
               </div>
               <div className="rounded border border-flag-line bg-flag-soft px-4 py-3 text-flag">
-                <div className="text-2xl font-bold tabular-nums">{flagged.length}</div>
-                <div className="text-xs opacity-80">확인 필요</div>
+                <div className="text-2xl font-bold tabular-nums">{result ? flaggedCount : "-"}</div>
+                <div className="text-xs opacity-80">{result ? "확인 필요" : "오타 검사 전"}</div>
               </div>
               <div className="rounded border border-pass-line bg-pass-soft px-4 py-3 text-pass">
                 <div className="text-2xl font-bold tabular-nums">{fixes.length}</div>
@@ -452,49 +490,50 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
               </div>
             </div>
 
-            {flagged.length > 0 && (
-              <section className="flex flex-col gap-2">
-                <h3 className="text-xs font-bold tracking-wide text-ink-muted">오타 의심 — 수정안을 고치고 적용 여부를 정하세요</h3>
-                <ul className="flex flex-col gap-2">
-                  {flagged.map(([line, i]) => (
-                    <FixRow key={i} line={line} edit={edits.get(i)} onChange={(p) => setEdit(i, p, line)} />
+            <section className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-bold text-ink">글자 정보 — 기존(AS-IS) · 수정 후(TO-BE)</h3>
+                <div className="ml-auto flex gap-1 text-xs">
+                  {(
+                    [
+                      ["all", `전체 ${lines.length}`],
+                      ["flagged", `오타 의심 ${flaggedCount}`],
+                      ["changed", `수정함 ${fixes.length}`],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setFilter(key)}
+                      className={`rounded-sm border px-2 py-0.5 ${filter === key ? "border-brand-700 bg-brand-700 text-white" : "border-line-strong text-ink-muted hover:bg-canvas"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-[11px] text-ink-faint">
+                <b>수정</b>은 오타 검사가 제안한 글자로 바꾸고, <b>직접수정</b>은 원하는 글자를 직접 적습니다.
+                {!result && " 오타 검사를 하면 오타 의심 줄과 제안이 함께 표시됩니다."}
+              </p>
+              {shown.length === 0 ? (
+                <p className="rounded border border-line px-3 py-4 text-center text-xs text-ink-faint">해당하는 줄이 없습니다.</p>
+              ) : (
+                <ul className="flex flex-col gap-1.5">
+                  {shown.map(([line, i]) => (
+                    <TextRow
+                      key={`${result ? "r" : "l"}${i}`}
+                      line={line}
+                      edit={edits.get(i)}
+                      onApply={(to) => setEdit(i, { on: true, to }, line)}
+                      onUndo={() =>
+                        line.is_flagged ? setEdit(i, { on: false, to: line.suggested_text ?? line.text }, line) : removeEdit(i)
+                      }
+                    />
                   ))}
                 </ul>
-              </section>
-            )}
-
-            {normal.length > 0 && (
-              <section className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowNormal(!showNormal)}
-                  className="w-fit text-xs font-bold tracking-wide text-ink-muted hover:text-ink"
-                >
-                  {showNormal ? "▼" : "▶"} 정상 판정 {normal.length}줄 — 직접 고칠 줄이 있으면 펼쳐서 수정
-                </button>
-                {showNormal && (
-                  <ul className="flex flex-col gap-1.5">
-                    {normal.map(([line, i]) => {
-                      const edit = edits.get(i);
-                      return edit ? (
-                        <FixRow key={i} line={line} edit={edit} onChange={(p) => setEdit(i, p, line)} onRemove={() => removeEdit(i)} />
-                      ) : (
-                        <li key={i} className="flex items-center gap-2 rounded border border-line px-3 py-1.5">
-                          <span className="min-w-0 flex-1 text-sm text-ink">{line.text}</span>
-                          <button
-                            type="button"
-                            onClick={() => setEdit(i, { on: true }, line)}
-                            className="shrink-0 rounded-sm border border-line-strong px-2 py-0.5 text-[11px] text-ink-muted hover:bg-canvas"
-                          >
-                            수정
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </section>
-            )}
+              )}
+            </section>
 
             <section className="flex flex-col gap-2 rounded border border-brand-200 bg-brand-50 p-4">
               <h3 className="text-sm font-bold text-brand-800">Illustrator에서 텍스트 수정하기</h3>
@@ -526,59 +565,110 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
   );
 }
 
-function FixRow({
+/** One line of the file's text: AS-IS, TO-BE, and the 수정 / 직접수정 buttons. */
+function TextRow({
   line,
   edit,
-  onChange,
-  onRemove,
+  onApply,
+  onUndo,
 }: {
   line: Line;
   edit?: Edit;
-  onChange: (patch: Partial<Edit>) => void;
-  onRemove?: () => void;
+  onApply: (to: string) => void;
+  onUndo: () => void;
 }) {
-  const to = edit?.to ?? line.suggested_text ?? line.text;
-  const on = edit?.on ?? false;
-  const changed = to !== line.text;
+  const [draft, setDraft] = useState<string | null>(null);
+  const applied = !!edit && edit.on && edit.to !== line.text;
+  const suggestion = line.suggested_text && line.suggested_text !== line.text ? line.suggested_text : null;
+  const tone = applied
+    ? "border-pass-line bg-pass-soft/40"
+    : line.is_flagged
+      ? "border-flag-line bg-flag-soft/40"
+      : "border-line bg-surface";
+
+  function confirm() {
+    if (draft === null) return;
+    if (draft.trim() === "" || draft === line.text) onUndo();
+    else onApply(draft);
+    setDraft(null);
+  }
+
+  const btn = "h-7 shrink-0 rounded-sm px-2.5 text-xs font-medium";
   return (
-    <li className={`flex flex-col gap-2 rounded border p-3 ${on && changed ? "border-pass-line bg-pass-soft/50" : "border-line bg-canvas"}`}>
-      <div className="flex items-start gap-2">
-        <label className="mt-0.5 flex shrink-0 cursor-pointer items-center gap-1.5 text-xs font-medium text-ink">
-          <input type="checkbox" checked={on} onChange={(e) => onChange({ on: e.target.checked })} className="h-4 w-4 accent-[var(--color-pass)]" />
-          적용
-        </label>
-        {line.page != null && (
-          <span className="shrink-0 rounded-sm border border-line-strong px-1.5 text-[11px] text-ink-muted">p.{line.page}</span>
-        )}
-        {onRemove && (
-          <button type="button" onClick={onRemove} className="ml-auto text-[11px] text-ink-faint underline hover:text-ink">
-            취소
-          </button>
+    <li className={`flex flex-col gap-1.5 rounded border px-3 py-2 ${tone}`}>
+      <div className="flex items-center gap-1.5 text-[11px]">
+        {line.page != null && <span className="rounded-sm border border-line-strong px-1.5 text-ink-muted">p.{line.page}</span>}
+        {applied ? (
+          <span className="rounded-sm bg-pass px-1.5 font-bold text-white">수정 예정</span>
+        ) : line.is_flagged ? (
+          <span className="rounded-sm bg-flag px-1.5 font-bold text-white">오타 의심</span>
+        ) : null}
+        <div className="ml-auto flex gap-1">
+          {draft === null && !applied && suggestion && (
+            <button type="button" onClick={() => onApply(suggestion)} className={`${btn} bg-brand-700 text-white hover:bg-brand-800`}>
+              수정
+            </button>
+          )}
+          {draft === null && (
+            <button
+              type="button"
+              onClick={() => setDraft(applied && edit ? edit.to : (suggestion ?? line.text))}
+              className={`${btn} border border-line-strong bg-white text-ink-muted hover:bg-canvas`}
+            >
+              직접수정
+            </button>
+          )}
+          {draft === null && applied && (
+            <button type="button" onClick={onUndo} className={`${btn} text-ink-faint underline hover:text-ink`}>
+              되돌리기
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-[3.5rem_1fr] items-start gap-x-2 gap-y-1 text-sm">
+        <span className="pt-0.5 text-[10px] font-bold tracking-wider text-ink-faint">AS-IS</span>
+        <span className="whitespace-pre-wrap break-words text-ink">{line.text}</span>
+
+        <span className="pt-0.5 text-[10px] font-bold tracking-wider text-pass">TO-BE</span>
+        {draft !== null ? (
+          <div className="flex flex-col gap-1.5">
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirm();
+                if (e.key === "Escape") setDraft(null);
+              }}
+              className="rounded-sm border border-pass-line bg-white px-2 py-1 text-sm font-medium text-ink outline-none focus:ring-2 focus:ring-pass/30"
+            />
+            {draft !== line.text && draft.trim() !== "" && (
+              <span className="text-xs text-ink-muted">
+                바뀌는 부분: <DiffText from={line.text} to={draft} />
+              </span>
+            )}
+            <div className="flex gap-1">
+              <button type="button" onClick={confirm} className={`${btn} bg-pass text-white`}>
+                확인
+              </button>
+              <button type="button" onClick={() => setDraft(null)} className={`${btn} border border-line-strong bg-white text-ink-muted`}>
+                취소
+              </button>
+            </div>
+          </div>
+        ) : applied && edit ? (
+          <DiffText from={line.text} to={edit.to} />
+        ) : suggestion ? (
+          <span className="text-ink-muted">
+            <span className="mr-1 text-[10px] text-ink-faint">(제안)</span>
+            <DiffText from={line.text} to={suggestion} />
+          </span>
+        ) : (
+          <span className="text-xs text-ink-faint">그대로</span>
         )}
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-        <p className="rounded-sm border border-flag-line bg-surface px-2.5 py-1.5 text-sm text-flag">
-          <span className="mr-1.5 text-[10px] font-bold tracking-widest">기존</span>
-          {line.text}
-        </p>
-        <span aria-hidden className="hidden text-ink-faint sm:block">→</span>
-        <label className="flex items-center gap-1.5 rounded-sm border border-pass-line bg-surface px-2.5 py-1">
-          <span className="text-[10px] font-bold tracking-widest text-pass">수정안</span>
-          <input
-            value={to}
-            onChange={(e) => onChange({ to: e.target.value, on: true })}
-            className="min-w-0 flex-1 bg-transparent py-0.5 text-sm font-medium text-pass outline-none"
-          />
-        </label>
-      </div>
-      {changed && (
-        <p className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-sm text-ink">
-          <span className="mr-1.5 text-[10px] font-bold tracking-widest text-ink-faint">바뀌는 부분</span>
-          <DiffText from={line.text} to={to} />
-        </p>
-      )}
       {line.flag_reason && <p className="text-xs leading-relaxed text-ink-muted">{line.flag_reason}</p>}
-      {on && !changed && <p className="text-[11px] text-ink-faint">원문과 같아서 적용되지 않습니다.</p>}
     </li>
   );
 }

@@ -59,3 +59,37 @@ export async function pageAsJpeg(file: Blob, maxBytes: number): Promise<Blob> {
     await doc.destroy();
   }
 }
+
+/** The file's own text, line by line, read locally (no upload, no AI).
+ *  Text converted to outlines has no characters left and is not found. */
+export async function extractLines(file: Blob): Promise<{ text: string; page: number }[]> {
+  const doc = await openPdf(file);
+  const out: { text: string; page: number }[] = [];
+  try {
+    for (let p = 1; p <= doc.numPages; p++) {
+      const page = await doc.getPage(p);
+      const content = await page.getTextContent();
+      let cur = "";
+      let lastY: number | null = null;
+      const push = () => {
+        const text = cur.replace(/\s+/g, " ").trim();
+        if (text) out.push({ text, page: p });
+        cur = "";
+        lastY = null;
+      };
+      for (const item of content.items) {
+        if (!("str" in item)) continue;
+        const y = item.transform[5];
+        if (lastY !== null && Math.abs(y - lastY) > 2) push();
+        cur += item.str;
+        lastY = y;
+        if (item.hasEOL) push();
+      }
+      push();
+      page.cleanup();
+    }
+  } finally {
+    await doc.destroy();
+  }
+  return out;
+}
