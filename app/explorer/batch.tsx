@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getCheckResult, uploadAndCheck } from "../check/actions";
+import { getDecisions, saveDecision, type Decision, type SavedDecision } from "./actions";
 import { entryKey, filesUnder, type DirNode, type FileEntry } from "./file-tree";
 import { toUploadable } from "./file-panel";
+
+export type { Decision } from "./actions";
 
 /** A folder review runs about 10–30 seconds per new file, so it is capped. */
 export const BATCH_LIMIT = 200;
 const CONCURRENCY = 3;
 
-export type Decision = "ok" | "fix" | "hold";
 export const DECISIONS: { value: Decision; label: string; cls: string }[] = [
   { value: "ok", label: "문제없음", cls: "border-pass-line bg-pass-soft text-pass" },
   { value: "fix", label: "수정 필요", cls: "border-flag-line bg-flag-soft text-flag" },
@@ -20,6 +22,9 @@ type Status = "wait" | "run" | "done" | "error";
 export type BatchItem = {
   entry: FileEntry;
   status: Status;
+  /** sha256 of the checked bytes — the same as documents.content_hash, so a
+   *  decision follows the file whichever PC or folder it is opened from. */
+  hash?: string;
   lines?: number;
   flagged?: number;
   /** First few flagged lines, for the summary. */
@@ -31,14 +36,22 @@ export type BatchItem = {
 
 export type Batch = ReturnType<typeof useBatch>;
 
-const STORE = "jeisys-typo-decisions";
+/** "server" = shared with the team; "local" = the table isn't set up yet, so
+ *  decisions stay in this browser until it is. */
+type Store = "server" | "local";
+const LOCAL_KEY = "jeisys-typo-decisions";
 
-function loadDecisions(): Record<string, Decision> {
+function loadLocal(): Record<string, Decision> {
   try {
-    return JSON.parse(localStorage.getItem(STORE) ?? "{}");
+    return JSON.parse(localStorage.getItem(LOCAL_KEY) ?? "{}");
   } catch {
     return {};
   }
+}
+
+async function sha256(file: File) {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** The AI service's raw error text means nothing to a reviewer. */
@@ -53,15 +66,17 @@ function friendly(err: unknown) {
 
 async function checkOne(entry: FileEntry): Promise<Partial<BatchItem>> {
   const { file, note } = await toUploadable(entry);
+  const hash = await sha256(file);
   const fd = new FormData();
   fd.append("file", file);
   let state = await uploadAndCheck({}, fd);
   const cached = !!state.duplicateOf;
   if (state.duplicateOf) state = await getCheckResult(state.duplicateOf.id);
-  if (state.error) throw new Error(state.error);
+  if (state.error) throw Object.assign(new Error(state.error), { hash });
   const lines = state.lines ?? [];
   const flagged = lines.filter((l) => l.is_flagged);
   return {
+    hash,
     lines: lines.length,
     flagged: flagged.length,
     samples: flagged.slice(0, 3).map((l) => ({ text: l.text, to: l.suggested_text })),
@@ -70,21 +85,32 @@ async function checkOne(entry: FileEntry): Promise<Partial<BatchItem>> {
   };
 }
 
-/** Folder review: checks the folder's files a few at a time and keeps the
- *  reviewer's decision per file (kept in this browser across visits). */
+/** Folder review: checks the folder's files a few at a time; the reviewer's
+ *  decision per file is saved on the server so the whole team sees it. */
 export function useBatch() {
   const [folder, setFolder] = useState<DirNode | null>(null);
   const [withPdf, setWithPdf] = useState(false);
   const [items, setItems] = useState<BatchItem[]>([]);
   const [running, setRunning] = useState(false);
   const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [decisions, setDecisions] = useState<Record<string, Decision>>({});
+  const [store, setStore] = useState<Store>("server");
+  /** Server decisions by content hash. */
+  const [saved, setSaved] = useState<Record<string, SavedDecision>>({});
+  /** Browser-only decisions by path, used while the server table is missing. */
+  const [local, setLocal] = useState<Record<string, Decision>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
   const stopRef = useRef(false);
   const runRef = useRef(0);
+  const storeRef = useRef<Store>("server");
 
   useEffect(() => {
-    void Promise.resolve().then(() => setDecisions(loadDecisions()));
+    void Promise.resolve().then(() => setLocal(loadLocal()));
   }, []);
+
+  function goLocal() {
+    storeRef.current = "local";
+    setStore("local");
+  }
 
   const candidates = useMemo(() => {
     if (!folder) return { all: 0, list: [] as FileEntry[] };
@@ -109,6 +135,18 @@ export function useBatch() {
     setItems([]);
   }
 
+  /** Pulls the team's decisions for files just checked. */
+  async function pull(hashes: string[]) {
+    if (storeRef.current === "local" || !hashes.length) return;
+    try {
+      const res = await getDecisions(hashes);
+      if (res.ok) setSaved((prev) => ({ ...prev, ...res.byHash }));
+      else if (res.reason === "not_ready") goLocal();
+    } catch {
+      // Reading decisions is best-effort; the review itself goes on.
+    }
+  }
+
   async function start() {
     const list = candidates.list;
     if (!list.length) return;
@@ -122,18 +160,24 @@ export function useBatch() {
     const patch = (i: number, p: Partial<BatchItem>) =>
       run === runRef.current && setItems((prev) => prev.map((it, k) => (k === i ? { ...it, ...p } : it)));
     let next = 0;
+    const pending: string[] = [];
     async function worker() {
       while (next < list.length && !stopRef.current && run === runRef.current) {
         const i = next++;
         patch(i, { status: "run" });
         try {
-          patch(i, { status: "done", ...(await checkOne(list[i])) });
+          const result = await checkOne(list[i]);
+          patch(i, { status: "done", ...result });
+          if (result.hash) pending.push(result.hash);
+          // Fetch decisions in small groups rather than one request per file.
+          if (pending.length >= 6) void pull(pending.splice(0));
         } catch (err) {
-          patch(i, { status: "error", error: friendly(err) });
+          patch(i, { status: "error", error: friendly(err), hash: (err as { hash?: string }).hash });
         }
       }
     }
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    void pull(pending.splice(0));
     if (run === runRef.current) setRunning(false);
   }
 
@@ -141,13 +185,15 @@ export function useBatch() {
     stopRef.current = true;
   }
 
-  function decide(entry: FileEntry, d: Decision | null) {
-    setDecisions((prev) => {
+  const itemOf = (entry: FileEntry) => items.find((it) => entryKey(it.entry) === entryKey(entry));
+
+  function decideLocal(entry: FileEntry, d: Decision | null) {
+    setLocal((prev) => {
       const next = { ...prev };
       if (d) next[entryKey(entry)] = d;
       else delete next[entryKey(entry)];
       try {
-        localStorage.setItem(STORE, JSON.stringify(next));
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(next));
       } catch {
         // Private window: decisions last for this visit only.
       }
@@ -155,9 +201,75 @@ export function useBatch() {
     });
   }
 
-  const decisionOf = (entry: FileEntry) => decisions[entryKey(entry)] ?? null;
+  async function decide(entry: FileEntry, d: Decision | null) {
+    const hash = itemOf(entry)?.hash;
+    if (storeRef.current === "local" || !hash) return decideLocal(entry, d);
+    setSaveError(null);
+    const before = saved[hash];
+    // Show it at once; put it back if the server refuses.
+    setSaved((prev) => {
+      const next = { ...prev };
+      if (d) next[hash] = { decision: d, by: "나", at: new Date().toISOString() };
+      else delete next[hash];
+      return next;
+    });
+    try {
+      const res = await saveDecision({ hash, decision: d, fileName: entry.name, filePath: entryKey(entry) });
+      if (res.ok) {
+        setSaved((prev) => {
+          const next = { ...prev };
+          if (res.saved) next[hash] = res.saved;
+          else delete next[hash];
+          return next;
+        });
+        return;
+      }
+      if (res.reason === "not_ready") {
+        goLocal();
+        decideLocal(entry, d);
+        return;
+      }
+      throw new Error(res.message);
+    } catch (err) {
+      setSaved((prev) => {
+        const next = { ...prev };
+        if (before) next[hash] = before;
+        else delete next[hash];
+        return next;
+      });
+      setSaveError(`결정을 저장하지 못했습니다${err instanceof Error && err.message ? `: ${err.message}` : ""}. 다시 눌러 주세요.`);
+    }
+  }
 
-  return { folder, withPdf, setWithPdf, candidates, items, running, startedAt, choose, close, start, stop, decide, decisionOf };
+  function infoOf(entry: FileEntry): SavedDecision | null {
+    if (store === "local") {
+      const d = local[entryKey(entry)];
+      return d ? { decision: d, by: "", at: "" } : null;
+    }
+    const hash = itemOf(entry)?.hash;
+    return hash ? (saved[hash] ?? null) : null;
+  }
+
+  const decisionOf = (entry: FileEntry) => infoOf(entry)?.decision ?? null;
+
+  return {
+    folder,
+    withPdf,
+    setWithPdf,
+    candidates,
+    items,
+    running,
+    startedAt,
+    store,
+    saveError,
+    choose,
+    close,
+    start,
+    stop,
+    decide,
+    decisionOf,
+    infoOf,
+  };
 }
 
 type Filter = "all" | "flagged" | "undecided" | "error";
@@ -175,15 +287,18 @@ export function reviewOrder(batch: Batch) {
 
 function csv(batch: Batch) {
   const label = (d: Decision | null) => DECISIONS.find((x) => x.value === d)?.label ?? "미결정";
-  const rows = [["파일", "경로", "상태", "글자 줄", "오타 의심", "담당자 결정", "의심 예시"]];
+  const rows = [["파일", "경로", "상태", "글자 줄", "오타 의심", "담당자 결정", "결정한 사람", "결정 시각", "의심 예시"]];
   for (const it of sortItems(batch.items)) {
+    const info = batch.infoOf(it.entry);
     rows.push([
       it.entry.name,
       entryKey(it.entry),
       it.status === "done" ? "완료" : it.status === "error" ? `오류: ${it.error}` : "미검사",
       String(it.lines ?? ""),
       String(it.flagged ?? ""),
-      label(batch.decisionOf(it.entry)),
+      label(info?.decision ?? null),
+      info?.by ?? "",
+      info?.at ? new Date(info.at).toLocaleString("ko-KR") : "",
       (it.samples ?? []).map((s) => (s.to ? `${s.text} → ${s.to}` : s.text)).join(" / "),
     ]);
   }
@@ -210,17 +325,29 @@ function Card({ n, label, cls = "", onClick, active }: { n: number; label: strin
   );
 }
 
+function shortDate(at: string) {
+  const d = new Date(at);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 export function DecisionButtons({ batch, entry, size = "sm" }: { batch: Batch; entry: FileEntry; size?: "sm" | "md" }) {
-  const cur = batch.decisionOf(entry);
+  const info = batch.infoOf(entry);
+  const cur = info?.decision ?? null;
   return (
-    <span className="flex shrink-0 gap-1">
+    <span className="flex shrink-0 items-center gap-1">
+      {info?.by && (
+        <span className="mr-0.5 text-[10px] text-ink-faint" title={info.at ? new Date(info.at).toLocaleString("ko-KR") : ""}>
+          {info.by}
+          {info.at && ` · ${shortDate(info.at)}`}
+        </span>
+      )}
       {DECISIONS.map((d) => (
         <button
           key={d.value}
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            batch.decide(entry, cur === d.value ? null : d.value);
+            void batch.decide(entry, cur === d.value ? null : d.value);
           }}
           className={`rounded-sm border font-medium ${size === "md" ? "px-3 py-1 text-sm" : "px-1.5 py-0.5 text-[11px]"} ${
             cur === d.value ? d.cls : "border-line text-ink-faint hover:bg-canvas"
@@ -351,6 +478,20 @@ export function BatchPanel({ batch, onOpen }: { batch: Batch; onOpen: (e: FileEn
               담당자 결정: 문제없음 {counts.ok} · 수정 필요 {counts.fix} · 보류 {counts.hold}
               <span className="text-ink-faint"> — 파일을 눌러 열어 보고, 위쪽 버튼으로 결정한 뒤 &quot;다음 파일&quot;로 넘어가면 됩니다.</span>
             </p>
+            {batch.store === "server" ? (
+              <p className="text-[11px] text-ink-faint">
+                결정은 서버에 저장되어 팀 모두에게 보입니다. 같은 파일이면 다른 PC·다른 폴더에서 열어도 같은 결정과 결정한 사람이 나옵니다.
+              </p>
+            ) : (
+              <p className="rounded border border-flag-line bg-flag-soft px-3 py-2 text-xs text-flag">
+                서버 저장소가 아직 준비되지 않아, 결정이 이 브라우저에만 저장됩니다. (관리자: supabase/migrations/20261117_review_decisions.sql 실행 필요)
+              </p>
+            )}
+            {batch.saveError && (
+              <p role="alert" className="rounded border border-flag-line bg-flag-soft px-3 py-2 text-xs text-flag">
+                {batch.saveError}
+              </p>
+            )}
 
             <ul className="flex flex-col divide-y divide-line rounded border border-line">
               {shown.map((it) => {
