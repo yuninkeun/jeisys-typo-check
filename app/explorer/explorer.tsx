@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildTree,
   entriesFromFileList,
+  CATEGORIES,
+  categoryOf,
   fillSizes,
   formatSize,
   mergeRoots,
@@ -276,14 +278,39 @@ export function Explorer() {
     return () => input.removeEventListener("cancel", onCancel);
   }, []);
 
-  const filtered = useMemo(
+  /** "category" = only boxes, stickers and sterile pouches, sorted under those three. */
+  const [view, setView] = useState<"category" | "folder">("category");
+  const byExt = useMemo(
     () => entries.filter((e) => matchesExt(e, extFilter)),
     [entries, extFilter],
   );
-  const tree = useMemo(
-    () => (rootName ? buildTree(rootName, filtered) : null),
-    [rootName, filtered],
-  );
+  const { filtered, excluded } = useMemo(() => {
+    if (view === "folder") return { filtered: byExt, excluded: 0 };
+    const out: FileEntry[] = [];
+    for (const e of byExt) {
+      const cat = categoryOf(e.path);
+      if (!cat) continue;
+      // Sizes are read in later onto the original entry; read them through.
+      out.push({
+        path: `${cat}/${e.path}`,
+        name: e.name,
+        ext: e.ext,
+        getFile: e.getFile,
+        get size() {
+          return e.size;
+        },
+      });
+    }
+    return { filtered: out, excluded: byExt.length - out.length };
+  }, [byExt, view]);
+  const tree = useMemo(() => {
+    if (!rootName) return null;
+    if (view === "folder") return buildTree(rootName, filtered);
+    const t = buildTree("박스 · 스티커 · 멸균지", filtered, true);
+    const order = CATEGORIES.map((c) => c.key as string);
+    t.dirs.sort((a, b) => order.indexOf(a.path) - order.indexOf(b.path));
+    return t;
+  }, [rootName, filtered, view]);
   const searchResults = useMemo(() => {
     const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
     if (words.length === 0) return null;
@@ -498,6 +525,34 @@ export function Explorer() {
                 placeholder="파일명·폴더명 검색 (예: POTENZA 멸균지)"
                 className="h-9 rounded border border-line-strong bg-white px-3 text-sm text-ink placeholder:text-ink-faint"
               />
+              <div className="flex items-center gap-1 rounded bg-canvas p-0.5 text-xs">
+                {(
+                  [
+                    ["category", "박스·스티커·멸균지"],
+                    ["folder", "폴더 그대로"],
+                  ] as const
+                ).map(([v, label]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => {
+                      setView(v);
+                      setExpanded(new Set([""]));
+                    }}
+                    className={`flex-1 rounded-sm px-2 py-1 font-medium ${
+                      view === v ? "bg-surface text-brand-700 shadow-sm" : "text-ink-muted hover:text-ink"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {view === "category" && excluded > 0 && (
+                <p className="text-[11px] text-ink-faint">
+                  박스·스티커·멸균지가 아닌 파일 {excluded.toLocaleString()}개(매뉴얼·명판·배너 등)는 숨겼습니다. 분류는 &quot;BOX·STICKER·멸균지 정리&quot;
+                  폴더를 먼저 따르고, 없으면 파일·폴더 이름으로 정합니다.
+                </p>
+              )}
               <div className="flex flex-wrap items-center gap-1.5">
                 {EXT_FILTERS.map((f) => (
                   <button

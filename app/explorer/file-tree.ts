@@ -126,7 +126,8 @@ export function entriesFromFileList(files: FileList): FileEntry[] {
 
 const collator = new Intl.Collator("ko", { numeric: true, sensitivity: "base" });
 
-export function buildTree(rootName: string, entries: FileEntry[]): DirNode {
+/** keepTop: never fold the first level (the 박스/스티커/멸균지 groups stay as they are). */
+export function buildTree(rootName: string, entries: FileEntry[], keepTop = false): DirNode {
   const root: DirNode = { name: rootName, path: "", dirs: [], files: [], total: 0, ai: 0, pdf: 0 };
   const byPath = new Map<string, DirNode>([["", root]]);
   const count = (node: DirNode, entry: FileEntry) => {
@@ -157,7 +158,7 @@ export function buildTree(rootName: string, entries: FileEntry[]): DirNode {
     node.dirs.sort((a, b) => collator.compare(a.name, b.name));
     node.files.sort((a, b) => collator.compare(a.name, b.name));
   }
-  root.dirs = root.dirs.map(compact);
+  root.dirs = keepTop ? root.dirs.map((d) => ({ ...d, dirs: d.dirs.map(compact) })) : root.dirs.map(compact);
   return root;
 }
 
@@ -172,6 +173,37 @@ function compact(node: DirNode): DirNode {
     name = `${name} / ${cur.name}`;
   }
   return { ...cur, name, dirs: cur.dirs.map(compact) };
+}
+
+/** Packaging kinds the label team sorts by. Checked in this order, because a
+ *  name often holds two: "TIP BOX 샷수 sticker" is a sticker for a box, and a
+ *  sterile pouch name can mention the box it goes in. */
+export const CATEGORIES = [
+  { key: "멸균지", test: /멸균|tyvek|타이벡|파우치|pouch|steril/i },
+  { key: "스티커", test: /스티커|sticker/i },
+  { key: "박스", test: /박스|box|상자|단상자|케이스|carton|카톤/i },
+] as const;
+export type Category = (typeof CATEGORIES)[number]["key"];
+
+/** The team's own sorting folders win ("BOX 정리", "STICKER 정리", "멸균지 정리":
+ *  a "박스 라벨" filed under STICKER is a sticker that goes on a box). Otherwise
+ *  the file name decides, then the nearest folder whose name says. */
+const SORTED: [RegExp, Category][] = [
+  [/^멸균지\s*정리/, "멸균지"],
+  [/^sticker\s*정리/i, "스티커"],
+  [/^box\s*정리/i, "박스"],
+];
+
+export function categoryOf(path: string): Category | null {
+  const parts = path.split("/");
+  for (let i = parts.length - 2; i >= 0; i--) {
+    for (const [re, key] of SORTED) if (re.test(parts[i])) return key;
+  }
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = i === parts.length - 1 ? parts[i].replace(/\.[^.]+$/, "") : parts[i];
+    for (const c of CATEGORIES) if (c.test.test(part)) return c.key;
+  }
+  return null;
 }
 
 /** Merges several opened folders into one list; with more than one, each
