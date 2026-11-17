@@ -93,3 +93,22 @@ export async function extractLines(file: Blob): Promise<{ text: string; page: nu
   }
   return out;
 }
+
+/** Whether the file still has live (editable) text, stopping at the first page that has some. */
+export async function liveTextSample(file: Blob): Promise<string[]> {
+  const doc = await openPdf(file);
+  try {
+    for (let p = 1; p <= doc.numPages; p++) {
+      const page = await doc.getPage(p);
+      const content = await page.getTextContent();
+      page.cleanup();
+      const words = content.items
+        .map((item) => ("str" in item ? item.str.trim() : ""))
+        .filter(Boolean);
+      if (words.length) return words.slice(0, 4);
+    }
+    return [];
+  } finally {
+    await doc.destroy();
+  }
+}

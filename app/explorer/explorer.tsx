@@ -493,7 +493,7 @@ export function Explorer() {
 
       <section className="min-w-0">
         {selected ? (
-          <FilePanel key={selected.path} entry={selected} rootName={rootName ?? ""} />
+          <FilePanel key={selected.path} entry={selected} rootName={rootName ?? ""} entries={entries} onSelect={select} />
         ) : (
           <div className="flex h-full min-h-[300px] items-center justify-center rounded border border-dashed border-line-strong bg-surface p-8 text-center text-sm text-ink-muted">
             왼쪽에서 파일을 선택하면 미리보기와 오타 검사, 수정 스크립트 만들기를 할 수 있습니다.

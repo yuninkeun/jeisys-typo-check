@@ -167,14 +167,15 @@ function main() {
   alert(msg);
 }
 
-/** "<name>_YYYYMMDD.ai" next to the original; adds _2, _3… if that file exists. */
-function completedFile(folder, name) {
+/** "<name>_YYYYMMDD<suffix>.ai" next to the original; adds _2, _3… if that file exists. */
+function completedFile(folder, name, suffix) {
+  suffix = suffix || "";
   var d = new Date();
   var pad = function (n) { return (n < 10 ? "0" : "") + n; };
   var stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
   var base = decodeURI(name).replace(/\.[^.]+$/, "");
-  var f = new File(folder.fsName + "/" + base + "_" + stamp + ".ai");
-  for (var n = 2; f.exists && n < 100; n++) f = new File(folder.fsName + "/" + base + "_" + stamp + "_" + n + ".ai");
+  var f = new File(folder.fsName + "/" + base + "_" + stamp + suffix + ".ai");
+  for (var n = 2; f.exists && n < 100; n++) f = new File(folder.fsName + "/" + base + "_" + stamp + suffix + "_" + n + ".ai");
   return f;
 }
 `;
@@ -197,4 +198,110 @@ export function buildIllustratorScript(fileName: string, fixes: TextFix[]): stri
 
 export function scriptFileName(fileName: string) {
   return `${fileName.replace(/\.[^.]+$/, "")}_오타수정.jsx`;
+}
+
+const MARKER_BODY = String.raw`
+function markColor(doc) {
+  if (doc.documentColorSpace === DocumentColorSpace.CMYK) {
+    var c = new CMYKColor(); c.cyan = 0; c.magenta = 100; c.yellow = 100; c.black = 0; return c;
+  }
+  var r = new RGBColor(); r.red = 230; r.green = 0; r.blue = 18; return r;
+}
+
+function setKoreanFont(range) {
+  var names = ["MalgunGothic", "MalgunGothicBold", "NanumGothic", "AppleSDGothicNeo-Regular"];
+  for (var i = 0; i < names.length; i++) {
+    try { range.characterAttributes.textFont = app.textFonts.getByName(names[i]); return; } catch (e) {}
+  }
+}
+
+function markMain() {
+  if (app.documents.length === 0) {
+    alert("열린 Illustrator 문서가 없습니다.\n표시할 파일(" + EXPECTED_FILE + ")을 먼저 열어 주세요.");
+    return;
+  }
+  var doc = app.activeDocument;
+  if (doc.name !== EXPECTED_FILE &&
+      !confirm("이 스크립트는 '" + EXPECTED_FILE + "'용입니다.\n지금 열린 문서는 '" + doc.name + "'입니다.\n그래도 적용할까요?")) {
+    return;
+  }
+  var folder = null;
+  try { folder = doc.path; } catch (e) { folder = null; }
+  if (!folder || !folder.exists) {
+    alert("이 문서는 아직 저장된 적이 없어 저장할 폴더를 알 수 없습니다.\n원본 파일을 연 상태에서 다시 실행해 주세요.");
+    return;
+  }
+  var target = completedFile(folder, doc.name, "_오타표시");
+  if (!confirm("오타 위치 " + MARKS.length + "곳을 '오타 표시' 레이어에 빨간 상자와 메모로 표시하고\n같은 폴더에 '" + decodeURI(target.name) + "'(으)로 저장합니다.\n원본 파일은 그대로 둡니다.")) {
+    return;
+  }
+  var oldSystem = app.coordinateSystem;
+  app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
+  var layer;
+  try { layer = doc.layers.getByName("오타 표시"); } catch (e) {
+    layer = doc.layers.add();
+    layer.name = "오타 표시";
+  }
+  layer.locked = false;
+  layer.visible = true;
+  var color = markColor(doc);
+  var list = [];
+  for (var i = 0; i < MARKS.length; i++) {
+    var m = MARKS[i];
+    var ab = doc.artboards[Math.max(0, Math.min(m.page - 1, doc.artboards.length - 1))];
+    var r = ab.artboardRect; // [left, top, right, bottom], y grows upward
+    var w = r[2] - r[0], h = r[1] - r[3];
+    var pad = 3;
+    var left = r[0] + m.x * w - pad;
+    var top = r[1] - m.y * h + pad;
+    var box = layer.pathItems.rectangle(top, left, m.w * w + pad * 2, m.h * h + pad * 2);
+    box.filled = false;
+    box.stroked = true;
+    box.strokeColor = color;
+    box.strokeWidth = 1.5;
+    var label = layer.textFrames.add();
+    label.contents = (i + 1) + ". " + m.from + "  →  " + m.to;
+    setKoreanFont(label.textRange);
+    label.textRange.characterAttributes.size = 7;
+    label.textRange.characterAttributes.fillColor = color;
+    label.position = [left, top + 10];
+    list.push((i + 1) + ". p." + m.page + "  " + m.from + "  →  " + m.to);
+  }
+  app.coordinateSystem = oldSystem;
+  var msg = "오타 위치 " + MARKS.length + "곳을 표시했습니다.\n\n" + list.join("\n");
+  try {
+    var opts = new IllustratorSaveOptions();
+    opts.pdfCompatible = true;
+    doc.saveAs(target, opts);
+    msg += "\n\n[저장 완료]\n" + decodeURI(target.fsName) +
+           "\n원본은 그대로 두었습니다.\n윤곽선 글자는 직접 다시 입력해야 합니다. 다 고친 뒤 '오타 표시' 레이어를 지우고 저장하세요.";
+  } catch (e) {
+    msg += "\n\n[저장 실패] " + e + "\n파일 > 다른 이름으로 저장으로 직접 저장해 주세요.";
+  }
+  alert(msg);
+}
+`;
+
+export type TypoMark = { page: number; x: number; y: number; w: number; h: number; from: string; to: string };
+
+/** For outlined artwork: draws a red box and a note at each typo on an
+ *  "오타 표시" layer and saves a copy, since the letters themselves can't be edited. */
+export function buildMarkerScript(fileName: string, marks: TypoMark[]): string {
+  const header = [
+    "// Jeisys 오타 검증 — Illustrator 오타 위치 표시 스크립트 (윤곽선 파일용)",
+    `// 대상 파일: ${fileName}`,
+    `// 생성: ${new Date().toLocaleString("ko-KR")}`,
+    "// 글자가 윤곽선이라 자동으로 고칠 수 없어, 고칠 곳에 빨간 상자와 메모를 '오타 표시' 레이어에 그립니다.",
+    "// 같은 폴더에 원본이름_오늘날짜_오타표시.ai로 저장하고, 원본은 건드리지 않습니다.",
+    "",
+    "#target illustrator",
+    `var EXPECTED_FILE = ${toEs3Literal(fileName)};`,
+    "var FIXES = [];",
+    `var MARKS = ${toEs3Literal(marks)};`,
+  ].join("\n");
+  return `${header}\n${SCRIPT_BODY}\n${MARKER_BODY}\nif (typeof app !== "undefined") markMain();\n`;
+}
+
+export function markerScriptFileName(fileName: string) {
+  return `${fileName.replace(/\.[^.]+$/, "")}_오타표시.jsx`;
 }

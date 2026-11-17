@@ -4,10 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { getCheckResult, uploadAndCheck, type CheckState } from "../check/actions";
 import { MAX_FILE_BYTES } from "../check/limits";
-import { buildIllustratorScript, scriptFileName, type TextFix } from "@/lib/illustrator-script";
+import {
+  buildIllustratorScript,
+  buildMarkerScript,
+  markerScriptFileName,
+  scriptFileName,
+  type TextFix,
+  type TypoMark,
+} from "@/lib/illustrator-script";
 import { formatSize, type FileEntry } from "./file-tree";
 import { extractLines, openPdf, pageAsJpeg, renderPage } from "./pdf-render";
 import { XmpEditor } from "./xmp-editor";
+import { OutlineHelp } from "./outline-help";
 
 type Line = NonNullable<CheckState["lines"]>[number];
 type Edit = { on: boolean; to: string };
@@ -174,7 +182,17 @@ function download(text: string, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: string }) {
+export function FilePanel({
+  entry,
+  rootName,
+  entries,
+  onSelect,
+}: {
+  entry: FileEntry;
+  rootName: string;
+  entries: FileEntry[];
+  onSelect: (e: FileEntry) => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -211,11 +229,7 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
           const found = await extractLines(s.blob);
           if (cancelled) return;
           setLocalLines(found.map((l) => ({ text: l.text, page: l.page, is_flagged: false })));
-          setExtractMsg(
-            found.length === 0
-              ? "파일에서 글자를 찾지 못했습니다. 글자가 윤곽선(아웃라인)으로 바뀌었을 수 있습니다. 오타 검사를 누르면 그림에서 글자를 읽어 봅니다."
-              : null,
-          );
+
         } catch {
           if (!cancelled) setExtractMsg("파일에서 글자를 읽지 못했습니다. 오타 검사로 확인해 주세요.");
         }
@@ -366,6 +380,16 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
     filter === "flagged" ? l.is_flagged : filter === "changed" ? isChanged(i) : true,
   );
   const canScript = entry.ext === "ai" || entry.ext === "pdf";
+  // No live text in the file: the letters were converted to outlines.
+  const outlined = canScript && localLines !== null && localLines.length === 0;
+  const marks: TypoMark[] = [];
+  lines.forEach((line, i) => {
+    if (!line.bbox) return;
+    const applied = isChanged(i);
+    if (!applied && !line.is_flagged) return;
+    const to = applied ? edits.get(i)!.to : (line.suggested_text ?? "확인 필요");
+    marks.push({ page: line.page ?? 1, ...line.bbox, from: line.text, to });
+  });
   const now = new Date();
   const today = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
 
@@ -471,6 +495,7 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
           </p>
         )}
 
+        {outlined && <OutlineHelp entry={entry} entries={entries} onSelect={onSelect} />}
         {extractMsg && !result && (
           <p className="rounded border border-line-strong bg-canvas px-3 py-2 text-xs text-ink-muted">{extractMsg}</p>
         )}
@@ -538,8 +563,38 @@ export function FilePanel({ entry, rootName }: { entry: FileEntry; rootName: str
             </section>
 
             <section className="flex flex-col gap-2 rounded border border-brand-200 bg-brand-50 p-4">
-              <h3 className="text-sm font-bold text-brand-800">Illustrator에 수정 적용하기</h3>
-              {canScript ? (
+              <h3 className="text-sm font-bold text-brand-800">
+                {outlined ? "Illustrator에 오타 위치 표시하기 (윤곽선 파일)" : "Illustrator에 수정 적용하기"}
+              </h3>
+              {outlined ? (
+                <>
+                  <ol className="list-decimal pl-5 text-xs leading-relaxed text-ink-muted">
+                    <li>
+                      위 표에서 고칠 줄을 <b>수정</b>·<b>직접수정</b>으로 정합니다. 오타 의심 줄은 정하지 않아도 &quot;확인 필요&quot;로 표시됩니다.
+                    </li>
+                    <li>아래 <b>오타 위치 표시 스크립트 적용</b> 버튼으로 스크립트(.jsx)를 받습니다.</li>
+                    <li>Illustrator에서 <b>{entry.name}</b> 파일을 열고 파일 &gt; 스크립트 &gt; 기타 스크립트…(Ctrl+F12)에서 받은 .jsx를 선택합니다.</li>
+                    <li>
+                      고칠 곳마다 빨간 상자와 메모가 <b>오타 표시</b> 레이어에 그려지고, 같은 폴더에{" "}
+                      <b>{entry.name.replace(/\.[^.]+$/, "")}_{today}_오타표시.ai</b>로 저장됩니다. 원본은 그대로 남습니다.
+                    </li>
+                    <li>표시를 보며 글자를 다시 입력하고 윤곽선으로 바꾼 뒤, 오타 표시 레이어를 지우고 저장합니다.</li>
+                  </ol>
+                  <button
+                    type="button"
+                    disabled={marks.length === 0}
+                    onClick={() => download(buildMarkerScript(entry.name, marks), markerScriptFileName(entry.name))}
+                    className="h-10 w-fit rounded bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+                  >
+                    오타 위치 표시 스크립트 적용 ({marks.length}곳)
+                  </button>
+                  {marks.length === 0 && (
+                    <p className="text-[11px] text-ink-faint">
+                      {result ? "표시할 오타 위치가 없습니다. 표에서 고칠 줄을 정해 주세요." : "먼저 오타 검사를 눌러 주세요. 그림에서 글자와 위치를 읽습니다."}
+                    </p>
+                  )}
+                </>
+              ) : canScript ? (
                 <>
                   <ol className="list-decimal pl-5 text-xs leading-relaxed text-ink-muted">
                     <li>아래 <b>수정 스크립트 적용</b> 버튼으로 스크립트(.jsx)를 받습니다.</li>
