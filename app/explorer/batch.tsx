@@ -41,6 +41,16 @@ function loadDecisions(): Record<string, Decision> {
   }
 }
 
+/** The AI service's raw error text means nothing to a reviewer. */
+function friendly(err: unknown) {
+  const msg = err instanceof Error ? err.message : "";
+  if (/invalid_file|badly formatted|corrupt/i.test(msg))
+    return "파일을 읽을 수 없습니다 — 손상됐거나, PDF 호환 저장이 꺼진 AI 파일일 수 있습니다.";
+  if (/429|rate limit/i.test(msg)) return "AI 요청이 많아 잠시 거절됐습니다. 나중에 다시 검토해 주세요.";
+  if (/timeout|timed out|504/i.test(msg)) return "시간 안에 끝나지 않았습니다. 파일을 열어 다시 검사해 주세요.";
+  return msg.length > 120 ? `${msg.slice(0, 120)}…` : msg || "검사하지 못했습니다.";
+}
+
 async function checkOne(entry: FileEntry): Promise<Partial<BatchItem>> {
   const { file, note } = await toUploadable(entry);
   const fd = new FormData();
@@ -119,7 +129,7 @@ export function useBatch() {
         try {
           patch(i, { status: "done", ...(await checkOne(list[i])) });
         } catch (err) {
-          patch(i, { status: "error", error: err instanceof Error ? err.message : "검사하지 못했습니다." });
+          patch(i, { status: "error", error: friendly(err) });
         }
       }
     }
