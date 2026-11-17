@@ -87,8 +87,8 @@ async function canvasJpeg(canvas: HTMLCanvasElement): Promise<Uint8Array> {
 
 /** Red numbered boxes on a rendered page. */
 function drawMarks(ctx: CanvasRenderingContext2D, w: number, h: number, marks: { n: number; box: Box }[]) {
-  const line = Math.max(2, w / 450);
-  const r = Math.max(10, w / 110);
+  const line = Math.max(3, w / 400);
+  const r = Math.max(14, w / 60);
   ctx.save();
   for (const { n, box } of marks) {
     ctx.strokeStyle = RED;
@@ -264,12 +264,14 @@ export function ProofEditor({
     };
   }, [source, isPdf]);
 
+  // The canvas only exists once there is a mark, so re-render when it appears.
+  const hasMarks = marks.length > 0;
   useEffect(() => {
-    if (!doc || !canvasRef.current) return;
+    if (!doc || !hasMarks || !canvasRef.current) return;
     renderPage(doc, Math.min(page, doc.numPages), canvasRef.current, 1300).catch(() =>
       setError("미리보기를 그리지 못했습니다."),
     );
-  }, [doc, page]);
+  }, [doc, page, hasMarks]);
 
   const numbered = marks.map((m, i) => ({ ...m, n: i + 1, box: boxes[m.key] ?? m.bbox ?? defaultBox(i) }));
   const pages = doc?.numPages ?? 1;
