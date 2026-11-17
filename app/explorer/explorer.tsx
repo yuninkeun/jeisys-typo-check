@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildTree,
   entriesFromFileList,
-  CATEGORIES,
   categoryOf,
   fillSizes,
   formatSize,
@@ -307,7 +306,8 @@ export function Explorer() {
     if (!rootName) return null;
     if (view === "folder") return buildTree(rootName, filtered);
     const t = buildTree("박스 · 스티커 · 멸균지", filtered, true);
-    const order = CATEGORIES.map((c) => c.key as string);
+    // Shown in the team's usual order, not the order the names are tested in.
+    const order: string[] = ["박스", "스티커", "멸균지"];
     t.dirs.sort((a, b) => order.indexOf(a.path) - order.indexOf(b.path));
     return t;
   }, [rootName, filtered, view]);
