@@ -60,29 +60,56 @@ export async function pageAsJpeg(file: Blob, maxBytes: number): Promise<Blob> {
   }
 }
 
-/** The file's own text, line by line, read locally (no upload, no AI).
+export type Box = { x: number; y: number; w: number; h: number };
+
+/** The file's own text, line by line, read locally (no upload, no AI), with
+ *  each line's box as a 0–1 fraction of the page (x, y from the top-left).
  *  Text converted to outlines has no characters left and is not found. */
-export async function extractLines(file: Blob): Promise<{ text: string; page: number }[]> {
+export async function extractLines(file: Blob): Promise<{ text: string; page: number; bbox?: Box }[]> {
   const doc = await openPdf(file);
-  const out: { text: string; page: number }[] = [];
+  const out: { text: string; page: number; bbox?: Box }[] = [];
   try {
     for (let p = 1; p <= doc.numPages; p++) {
       const page = await doc.getPage(p);
+      const [vx0, vy0, vx1, vy1] = page.view;
+      const pw = vx1 - vx0;
+      const ph = vy1 - vy0;
       const content = await page.getTextContent();
       let cur = "";
       let lastY: number | null = null;
+      let box: { l: number; r: number; t: number; b: number } | null = null;
       const push = () => {
         const text = cur.replace(/\s+/g, " ").trim();
-        if (text) out.push({ text, page: p });
+        if (text) {
+          const bbox =
+            box && pw > 0 && ph > 0
+              ? {
+                  x: Math.max(0, (box.l - vx0) / pw),
+                  y: Math.max(0, (vy1 - box.t) / ph),
+                  w: Math.min(1, (box.r - box.l) / pw),
+                  h: Math.min(1, (box.t - box.b) / ph),
+                }
+              : undefined;
+          out.push({ text, page: p, bbox });
+        }
         cur = "";
         lastY = null;
+        box = null;
       };
       for (const item of content.items) {
         if (!("str" in item)) continue;
-        const y = item.transform[5];
+        const [, , , d, x, y] = item.transform;
         if (lastY !== null && Math.abs(y - lastY) > 2) push();
         cur += item.str;
         lastY = y;
+        if (item.str.trim()) {
+          const h = item.height || Math.abs(d) || 1;
+          const l = x;
+          const r = x + (item.width || 0);
+          const b = y - h * 0.2;
+          const t = y + h;
+          box = box ? { l: Math.min(box.l, l), r: Math.max(box.r, r), t: Math.max(box.t, t), b: Math.min(box.b, b) } : { l, r, t, b };
+        }
         if (item.hasEOL) push();
       }
       push();

@@ -16,6 +16,7 @@ import { formatSize, type FileEntry } from "./file-tree";
 import { extractLines, openPdf, pageAsJpeg, renderPage } from "./pdf-render";
 import { XmpEditor } from "./xmp-editor";
 import { OutlineHelp } from "./outline-help";
+import { ProofEditor, type ProofMark } from "./proof";
 
 type Line = NonNullable<CheckState["lines"]>[number];
 type Edit = { on: boolean; to: string };
@@ -228,7 +229,7 @@ export function FilePanel({
         try {
           const found = await extractLines(s.blob);
           if (cancelled) return;
-          setLocalLines(found.map((l) => ({ text: l.text, page: l.page, is_flagged: false })));
+          setLocalLines(found.map((l) => ({ text: l.text, page: l.page, bbox: l.bbox, is_flagged: false })));
 
         } catch {
           if (!cancelled) setExtractMsg("파일에서 글자를 읽지 못했습니다. 오타 검사로 확인해 주세요.");
@@ -382,6 +383,17 @@ export function FilePanel({
   const canScript = entry.ext === "ai" || entry.ext === "pdf";
   // No live text in the file: the letters were converted to outlines.
   const outlined = canScript && localLines !== null && localLines.length === 0;
+  const proofMarks: ProofMark[] = [];
+  lines.forEach((line, i) => {
+    if (!isChanged(i)) return;
+    proofMarks.push({
+      key: `${result ? "r" : "l"}${i}`,
+      page: line.page ?? 1,
+      bbox: line.bbox ?? null,
+      from: line.text,
+      to: edits.get(i)!.to,
+    });
+  });
   const marks: TypoMark[] = [];
   lines.forEach((line, i) => {
     if (!line.bbox) return;
@@ -561,6 +573,8 @@ export function FilePanel({
                 </ul>
               )}
             </section>
+
+            <ProofEditor source={original?.blob ?? null} isPdf={isPdf} fileName={entry.name} marks={proofMarks} />
 
             <section className="flex flex-col gap-2 rounded border border-brand-200 bg-brand-50 p-4">
               <h3 className="text-sm font-bold text-brand-800">
