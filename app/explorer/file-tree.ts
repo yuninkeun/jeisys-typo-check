@@ -20,6 +20,8 @@ export type DirNode = {
   files: FileEntry[];
   /** Supported files anywhere below this folder. */
   total: number;
+  ai: number;
+  pdf: number;
 };
 
 export function extOf(name: string): SupportedExt | null {
@@ -93,6 +95,7 @@ export async function fillSizes(
   async function worker() {
     while (next < entries.length && !signal.aborted) {
       const entry = entries[next++];
+      if (entry.size != null) continue;
       try {
         entry.size = (await entry.getFile()).size;
       } catch {
@@ -124,22 +127,27 @@ export function entriesFromFileList(files: FileList): FileEntry[] {
 const collator = new Intl.Collator("ko", { numeric: true, sensitivity: "base" });
 
 export function buildTree(rootName: string, entries: FileEntry[]): DirNode {
-  const root: DirNode = { name: rootName, path: "", dirs: [], files: [], total: 0 };
+  const root: DirNode = { name: rootName, path: "", dirs: [], files: [], total: 0, ai: 0, pdf: 0 };
   const byPath = new Map<string, DirNode>([["", root]]);
+  const count = (node: DirNode, entry: FileEntry) => {
+    node.total++;
+    if (entry.ext === "ai") node.ai++;
+    else if (entry.ext === "pdf") node.pdf++;
+  };
 
   for (const entry of entries) {
     const parts = entry.path.split("/");
     let node = root;
-    node.total++;
+    count(node, entry);
     for (let i = 0; i < parts.length - 1; i++) {
       const path = parts.slice(0, i + 1).join("/");
       let child = byPath.get(path);
       if (!child) {
-        child = { name: parts[i], path, dirs: [], files: [], total: 0 };
+        child = { name: parts[i], path, dirs: [], files: [], total: 0, ai: 0, pdf: 0 };
         byPath.set(path, child);
         node.dirs.push(child);
       }
-      child.total++;
+      count(child, entry);
       node = child;
     }
     node.files.push(entry);
@@ -149,7 +157,28 @@ export function buildTree(rootName: string, entries: FileEntry[]): DirNode {
     node.dirs.sort((a, b) => collator.compare(a.name, b.name));
     node.files.sort((a, b) => collator.compare(a.name, b.name));
   }
+  root.dirs = root.dirs.map(compact);
   return root;
+}
+
+/** Folds a chain of folders that only hold one subfolder each ("a / b / c") into
+ *  one row, so deep but empty structure takes one click instead of several. The
+ *  folded node keeps the deepest path, which is what reveal() opens. */
+function compact(node: DirNode): DirNode {
+  let cur = node;
+  let name = node.name;
+  while (cur.files.length === 0 && cur.dirs.length === 1) {
+    cur = cur.dirs[0];
+    name = `${name} / ${cur.name}`;
+  }
+  return { ...cur, name, dirs: cur.dirs.map(compact) };
+}
+
+/** Merges several opened folders into one list; with more than one, each
+ *  folder's name becomes the first part of its files' paths. */
+export function mergeRoots(roots: { name: string; entries: FileEntry[] }[]): FileEntry[] {
+  if (roots.length === 1) return roots[0].entries;
+  return roots.flatMap((r) => r.entries.map((e) => ({ ...e, path: `${r.name}/${e.path}` })));
 }
 
 export function formatSize(bytes: number | undefined) {

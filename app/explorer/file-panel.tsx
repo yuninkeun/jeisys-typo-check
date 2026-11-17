@@ -297,7 +297,9 @@ export function FilePanel({
   }
 
   function showResult(state: CheckState) {
-    // Keep fixes typed in before the check, matched by the original text.
+    // Keep fixes typed in before the check, matched by the original text. Read
+    // through a ref: the check started on open, before those fixes were typed.
+    const { edits, lines } = latest.current;
     const kept = new Map<string, Edit>();
     edits.forEach((edit, i) => {
       const line = lines[i];
@@ -366,6 +368,24 @@ export function FilePanel({
   }
 
   const lines = result?.lines ?? localLines ?? [];
+  const latest = useRef({ edits, lines });
+  useEffect(() => {
+    latest.current = { edits, lines };
+  });
+
+  // Choosing a file starts the check right away. A file checked before comes
+  // back from the saved result without a new AI call (the server dedupes it).
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) void runCheck(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry]);
+
   const fixes: TextFix[] = [];
   edits.forEach((edit, i) => {
     const line = lines[i];
