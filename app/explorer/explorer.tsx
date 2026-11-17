@@ -14,6 +14,7 @@ import {
   type ScanProgress,
 } from "./file-tree";
 import { FilePanel } from "./file-panel";
+import { BatchPanel, ReviewBar, useBatch } from "./batch";
 
 type ExtFilter = "aipdf" | "all" | "ai" | "pdf" | "image";
 
@@ -119,6 +120,8 @@ function DirBranch({
   toggle,
   selectedPath,
   onSelect,
+  reviewPath,
+  onReview,
 }: {
   node: DirNode;
   depth: number;
@@ -127,17 +130,21 @@ function DirBranch({
   toggle: (path: string) => void;
   selectedPath: string | null;
   onSelect: (e: FileEntry) => void;
+  reviewPath: string | null;
+  onReview: (n: DirNode) => void;
 }) {
   const open = expanded.has(node.path);
+  const reviewing = reviewPath === node.path;
   return (
     <li>
+      <div className={`group flex items-center ${reviewing ? "bg-brand-50" : "hover:bg-canvas"}`}>
       <button
         type="button"
         onClick={() => toggle(node.path)}
         aria-expanded={open}
         title={`${node.name}\nAI ${node.ai} · PDF ${node.pdf} · 전체 ${node.total}`}
         style={{ paddingLeft: 8 + depth * 14 }}
-        className="flex w-full items-center gap-1.5 py-[3px] pr-2 text-left text-[13px] font-medium text-ink hover:bg-canvas"
+        className="flex min-w-0 flex-1 items-center gap-1.5 py-[3px] pr-1 text-left text-[13px] font-medium text-ink"
       >
         <span aria-hidden className={`inline-block w-3 shrink-0 text-[10px] text-ink-faint transition-transform ${open ? "rotate-90" : ""}`}>
           ▶
@@ -153,6 +160,21 @@ function DirBranch({
           {node.total - node.ai - node.pdf > 0 && <span className="text-ink-faint">기타 {node.total - node.ai - node.pdf}</span>}
         </span>
       </button>
+      {node.ai + node.pdf > 0 && (
+        <button
+          type="button"
+          onClick={() => onReview(node)}
+          title={`이 폴더의 AI 파일을 한꺼번에 검토합니다 (최대 200개)`}
+          className={`mr-1.5 shrink-0 rounded-sm border px-1.5 text-[11px] font-medium leading-5 ${
+            reviewing
+              ? "border-brand-700 bg-brand-700 text-white"
+              : "border-line-strong bg-surface text-brand-700 opacity-100 group-hover:opacity-100 focus:opacity-100 lg:opacity-0"
+          }`}
+        >
+          검토
+        </button>
+      )}
+      </div>
       {open && (
         <ul>
           {node.dirs.map((d) => (
@@ -165,6 +187,8 @@ function DirBranch({
               toggle={toggle}
               selectedPath={selectedPath}
               onSelect={onSelect}
+              reviewPath={reviewPath}
+              onReview={onReview}
             />
           ))}
           {node.files.map((f) => (
@@ -255,6 +279,7 @@ export function Explorer() {
   const entries = useMemo(() => (roots.length ? mergeRoots(roots) : []), [roots]);
   const rootName = roots.length === 0 ? null : roots.length === 1 ? roots[0].name : `열린 폴더 ${roots.length}개`;
   const addMode = useRef(false);
+  const batch = useBatch();
   /** "picking" = the OS folder dialog is open; then scanning progress. */
   const [phase, setPhase] = useState<"idle" | "picking" | "scanning">("idle");
   const [scanning, setScanning] = useState<ScanProgress | null>(null);
@@ -295,6 +320,7 @@ export function Explorer() {
         name: e.name,
         ext: e.ext,
         getFile: e.getFile,
+        source: e,
         get size() {
           return e.size;
         },
@@ -332,6 +358,7 @@ export function Explorer() {
     setExpanded(new Set([""]));
     setSelected(null);
     setQuery("");
+    batch.close();
   }
 
   // Sizes are only for display, so read them after the tree is usable.
@@ -660,19 +687,39 @@ export function Explorer() {
                 toggle={toggle}
                 selectedPath={selected?.path ?? null}
                 onSelect={select}
+                reviewPath={batch.folder?.path ?? null}
+                onReview={(n) => {
+                  batch.choose(n);
+                  setSelected(null);
+                }}
               />
             </ul>
           )}
         </div>
       </aside>
 
-      <section className="min-w-0">
-        {selected ? (
-          <FilePanel key={selected.path} entry={selected} rootName={rootName ?? ""} entries={entries} onSelect={select} />
-        ) : (
-          <div className="flex h-full min-h-[300px] items-center justify-center rounded border border-dashed border-line-strong bg-surface p-8 text-center text-sm text-ink-muted">
-            왼쪽에서 파일을 선택하면 미리보기와 오타 검사, 수정 스크립트 만들기를 할 수 있습니다.
+      <section className="flex min-w-0 flex-col gap-3">
+        {/* Kept mounted while a file is open, so the review keeps running. */}
+        {batch.folder && (
+          <div hidden={!!selected}>
+            <BatchPanel batch={batch} onOpen={select} />
           </div>
+        )}
+        {selected ? (
+          <>
+            {batch.folder && <ReviewBar batch={batch} entry={selected} onOpen={select} onBack={() => setSelected(null)} />}
+            <FilePanel key={selected.path} entry={selected} rootName={rootName ?? ""} entries={entries} onSelect={select} />
+          </>
+        ) : (
+          !batch.folder && (
+            <div className="flex h-full min-h-[300px] flex-col items-center justify-center gap-2 rounded border border-dashed border-line-strong bg-surface p-8 text-center text-sm text-ink-muted">
+              <p>왼쪽에서 파일을 선택하면 미리보기와 오타 검사, 수정 스크립트 만들기를 할 수 있습니다.</p>
+              <p className="text-xs text-ink-faint">
+                폴더 줄에 마우스를 올리면 나오는 <b className="text-brand-700">검토</b> 버튼을 누르면, 그 폴더의 AI 파일을 최대 200개까지
+                한꺼번에 검토하고 결과를 요약해 보여 줍니다.
+              </p>
+            </div>
+          )
         )}
       </section>
     </div>

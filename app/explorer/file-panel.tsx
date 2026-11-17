@@ -157,7 +157,7 @@ function DiffText({ from, to }: { from: string; to: string }) {
 }
 
 /** Turns the picked file into something uploadAndCheck accepts (≤4MB PDF/PNG/JPG). */
-async function toUploadable(entry: FileEntry): Promise<{ file: File; note?: string }> {
+export async function toUploadable(entry: FileEntry): Promise<{ file: File; note?: string }> {
   const file = await entry.getFile();
   const isPdfLike = entry.ext === "pdf" || entry.ext === "ai";
   if (file.size <= MAX_FILE_BYTES) {

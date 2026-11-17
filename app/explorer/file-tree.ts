@@ -11,7 +11,19 @@ export type FileEntry = {
    *  front made opening a big folder take minutes. */
   size?: number;
   getFile: () => Promise<File>;
+  /** Set on the copies shown under 박스/스티커/멸균지: the entry they stand for. */
+  source?: FileEntry;
 };
+
+/** Same file whichever view (category or folder) it was picked from. */
+export function entryKey(e: FileEntry) {
+  return (e.source ?? e).path;
+}
+
+/** Every file at or below a folder, in tree order. */
+export function filesUnder(node: DirNode): FileEntry[] {
+  return [...node.dirs.flatMap(filesUnder), ...node.files];
+}
 
 export type DirNode = {
   name: string;
