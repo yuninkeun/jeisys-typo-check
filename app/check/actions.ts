@@ -227,6 +227,8 @@ async function extractWithOpenAI(
 
   if (!res.ok) {
     const detail = await res.text();
+    if (/insufficient_quota|credit_balance/.test(detail))
+      throw new Error("AI 사용 크레딧이 모두 소진됐습니다(insufficient_quota). 관리자가 OpenAI 결제(크레딧)를 충전한 뒤 다시 검사해 주세요.");
     throw new Error(`OpenAI 요청 실패 (${res.status}): ${detail.slice(0, 300)}`);
   }
 

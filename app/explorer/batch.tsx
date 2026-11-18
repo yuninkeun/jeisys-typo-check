@@ -59,6 +59,8 @@ function friendly(err: unknown) {
   const msg = err instanceof Error ? err.message : "";
   if (/invalid_file|badly formatted|corrupt/i.test(msg))
     return "파일을 읽을 수 없습니다 — 손상됐거나, PDF 호환 저장이 꺼진 AI 파일일 수 있습니다.";
+  if (/insufficient_quota|credit_balance|no credits/i.test(msg))
+    return "AI 사용 크레딧이 모두 소진됐습니다. 관리자가 OpenAI 결제(크레딧)를 충전한 뒤 다시 검토해 주세요.";
   if (/429|rate limit/i.test(msg)) return "AI 요청이 많아 잠시 거절됐습니다. 나중에 다시 검토해 주세요.";
   if (/timeout|timed out|504/i.test(msg)) return "시간 안에 끝나지 않았습니다. 파일을 열어 다시 검사해 주세요.";
   return msg.length > 120 ? `${msg.slice(0, 120)}…` : msg || "검사하지 못했습니다.";
