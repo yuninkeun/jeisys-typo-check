@@ -88,7 +88,8 @@ async function checkOne(entry: FileEntry): Promise<Partial<BatchItem>> {
 /** Folder review: checks the folder's files a few at a time; the reviewer's
  *  decision per file is saved on the server so the whole team sees it. */
 export function useBatch() {
-  const [folder, setFolder] = useState<DirNode | null>(null);
+  /** Folders picked for one review — «검토» on another folder adds it. */
+  const [folders, setFolders] = useState<DirNode[]>([]);
   const [withPdf, setWithPdf] = useState(false);
   const [items, setItems] = useState<BatchItem[]>([]);
   const [running, setRunning] = useState(false);
@@ -112,27 +113,63 @@ export function useBatch() {
     setStore("local");
   }
 
-  const candidates = useMemo(() => {
-    if (!folder) return { all: 0, list: [] as FileEntry[] };
-    const all = filesUnder(folder).filter((e) => e.ext === "ai" || (withPdf && e.ext === "pdf"));
-    return { all: all.length, list: all.slice(0, BATCH_LIMIT) };
-  }, [folder, withPdf]);
+  /** Every file under the picked folders once (a folder inside another picked
+   *  folder adds nothing twice), in the order the folders were picked. */
+  const files = useMemo(() => {
+    const seen = new Set<string>();
+    const out: FileEntry[] = [];
+    for (const f of folders)
+      for (const e of filesUnder(f))
+        if (!seen.has(entryKey(e))) {
+          seen.add(entryKey(e));
+          out.push(e);
+        }
+    return out;
+  }, [folders]);
 
-  function choose(node: DirNode) {
+  const candidates = useMemo(() => {
+    const all = files.filter((e) => e.ext === "ai" || (withPdf && e.ext === "pdf"));
+    return { all: all.length, list: all.slice(0, BATCH_LIMIT) };
+  }, [files, withPdf]);
+
+  /** One line for the picked folders, as one block for the header and the CSV. */
+  const folder = useMemo(() => {
+    if (!folders.length) return null;
+    const last = (n: DirNode) => n.name.split(" / ").pop() ?? n.name;
+    return {
+      name: folders.length === 1 ? folders[0].name : `${last(folders[0])} 외 ${folders.length - 1}개 폴더`,
+      fileName: folders.length === 1 ? last(folders[0]) : `${last(folders[0])}_외${folders.length - 1}개`,
+      ai: files.filter((e) => e.ext === "ai").length,
+      pdf: files.filter((e) => e.ext === "pdf").length,
+    };
+  }, [folders, files]);
+
+  function reset() {
     stopRef.current = true;
     runRef.current++;
     setRunning(false);
-    setFolder(node);
     setItems([]);
     setStartedAt(null);
   }
 
+  /** «검토» on a folder: before a review starts it adds the folder to (or takes
+   *  it out of) the picked folders; once one has run, it starts a new pick. */
+  function choose(node: DirNode) {
+    if (items.length > 0) {
+      reset();
+      setFolders([node]);
+      return;
+    }
+    setFolders((prev) => (prev.some((f) => f.path === node.path) ? prev.filter((f) => f.path !== node.path) : [...prev, node]));
+  }
+
+  function remove(path: string) {
+    setFolders((prev) => prev.filter((f) => f.path !== path));
+  }
+
   function close() {
-    stopRef.current = true;
-    runRef.current++;
-    setRunning(false);
-    setFolder(null);
-    setItems([]);
+    reset();
+    setFolders([]);
   }
 
   /** Pulls the team's decisions for files just checked. */
@@ -254,6 +291,8 @@ export function useBatch() {
 
   return {
     folder,
+    folders,
+    remove,
     withPdf,
     setWithPdf,
     candidates,
@@ -307,7 +346,7 @@ function csv(batch: Batch) {
   const a = document.createElement("a");
   a.href = url;
   const d = new Date();
-  a.download = `일괄검토_${batch.folder?.name.split(" / ").pop()}_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}.csv`;
+  a.download = `일괄검토_${batch.folder?.fileName}_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}.csv`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -401,8 +440,39 @@ export function BatchPanel({ batch, onOpen }: { batch: Batch; onOpen: (e: FileEn
           </button>
         </div>
         <p className="text-xs text-ink-faint">
-          폴더 안 AI {folder.ai.toLocaleString()}개 · PDF {folder.pdf.toLocaleString()}개 · 한 번에 최대 {BATCH_LIMIT}개까지 검토합니다.
+          {batch.folders.length > 1 ? `폴더 ${batch.folders.length}개` : "폴더"} 안 AI {folder.ai.toLocaleString()}개 · PDF{" "}
+          {folder.pdf.toLocaleString()}개 · 한 번에 최대 {BATCH_LIMIT}개까지 검토합니다.
         </p>
+        {items.length === 0 && (
+          <>
+            {batch.folders.length > 1 && (
+              <ul className="flex flex-wrap gap-1.5 pt-1">
+                {batch.folders.map((f) => (
+                  <li
+                    key={f.path}
+                    className="flex max-w-full items-center gap-1 rounded-full border border-line bg-surface py-0.5 pl-2.5 pr-1 text-[11px] text-ink"
+                  >
+                    <span className="truncate" title={f.path}>
+                      {f.name}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-ink-faint">AI {f.ai}</span>
+                    <button
+                      type="button"
+                      onClick={() => batch.remove(f.path)}
+                      aria-label={`${f.name} 빼기`}
+                      className="shrink-0 rounded-full px-1 text-ink-muted hover:bg-canvas hover:text-ink"
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-[11px] text-ink-muted">
+              다른 폴더 줄의 <b className="text-brand-700">검토</b>를 누르면 함께 검토할 폴더로 더해집니다(다시 누르면 빠짐).
+            </p>
+          </>
+        )}
       </header>
 
       <div className="flex flex-col gap-4 p-5">
@@ -414,14 +484,14 @@ export function BatchPanel({ batch, onOpen }: { batch: Batch; onOpen: (e: FileEn
             </label>
             {candidates.all === 0 ? (
               <p className="rounded border border-dashed border-line-strong px-3 py-4 text-center text-sm text-ink-muted">
-                이 폴더에는 검토할 {batch.withPdf ? "AI·PDF" : "AI"} 파일이 없습니다.
+                {batch.folders.length > 1 ? "고른 폴더들" : "이 폴더"}에는 검토할 {batch.withPdf ? "AI·PDF" : "AI"} 파일이 없습니다.
               </p>
             ) : (
               <>
                 <p className="text-sm text-ink">
                   검토 대상 <b>{candidates.list.length.toLocaleString()}개</b>
                   {candidates.all > BATCH_LIMIT && (
-                    <span className="text-flag"> (전체 {candidates.all.toLocaleString()}개 중 트리 순서로 앞 {BATCH_LIMIT}개 — 나머지는 하위 폴더를 골라 따로 검토하세요)</span>
+                    <span className="text-flag"> (전체 {candidates.all.toLocaleString()}개 중 트리 순서로 앞 {BATCH_LIMIT}개 — 나머지는 폴더를 나눠 따로 검토하세요)</span>
                   )}
                 </p>
                 <p className="text-xs leading-relaxed text-ink-muted">

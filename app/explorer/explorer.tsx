@@ -122,7 +122,7 @@ function DirBranch({
   toggle,
   selectedPath,
   onSelect,
-  reviewPath,
+  reviewPaths,
   onReview,
 }: {
   node: DirNode;
@@ -132,11 +132,11 @@ function DirBranch({
   toggle: (path: string) => void;
   selectedPath: string | null;
   onSelect: (e: FileEntry) => void;
-  reviewPath: string | null;
+  reviewPaths: Set<string>;
   onReview: (n: DirNode) => void;
 }) {
   const open = expanded.has(node.path);
-  const reviewing = reviewPath === node.path;
+  const reviewing = reviewPaths.has(node.path);
   return (
     <li>
       <div className={`group flex items-center ${reviewing ? "bg-brand-50" : "hover:bg-canvas"}`}>
@@ -166,7 +166,7 @@ function DirBranch({
         <button
           type="button"
           onClick={() => onReview(node)}
-          title={`이 폴더의 AI 파일을 한꺼번에 검토합니다 (최대 200개)`}
+          title={reviewing ? "검토할 폴더에서 뺍니다" : "이 폴더를 검토할 폴더로 더합니다 (여러 개 고를 수 있음, 합쳐서 최대 200개)"}
           className={`mr-1.5 shrink-0 rounded-sm border px-1.5 text-[11px] font-medium leading-5 ${
             reviewing
               ? "border-brand-700 bg-brand-700 text-white"
@@ -189,7 +189,7 @@ function DirBranch({
               toggle={toggle}
               selectedPath={selectedPath}
               onSelect={onSelect}
-              reviewPath={reviewPath}
+              reviewPaths={reviewPaths}
               onReview={onReview}
             />
           ))}
@@ -488,6 +488,7 @@ export function Explorer() {
   }, [entries]);
 
   const conclusion = explorerConclusion(batch, rootName, entries);
+  const reviewPaths = new Set(batch.folders.map((f) => f.path));
 
   return (
     <>
@@ -692,7 +693,7 @@ export function Explorer() {
                 toggle={toggle}
                 selectedPath={selected?.path ?? null}
                 onSelect={select}
-                reviewPath={batch.folder?.path ?? null}
+                reviewPaths={reviewPaths}
                 onReview={(n) => {
                   batch.choose(n);
                   setSelected(null);
@@ -721,7 +722,7 @@ export function Explorer() {
               <p>왼쪽에서 파일을 선택하면 미리보기와 오타 검사, 수정 스크립트 만들기를 할 수 있습니다.</p>
               <p className="text-xs text-ink-faint">
                 폴더 줄에 마우스를 올리면 나오는 <b className="text-brand-700">검토</b> 버튼을 누르면, 그 폴더의 AI 파일을 최대 200개까지
-                한꺼번에 검토하고 결과를 요약해 보여 줍니다.
+                한꺼번에 검토합니다. 여러 폴더의 «검토»를 차례로 누르면 함께 묶어 검토하고 결과를 요약해 보여 줍니다.
               </p>
             </div>
           )
