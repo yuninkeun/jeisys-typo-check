@@ -104,10 +104,11 @@ const isTarget = (e: FileEntry, withPdf: boolean) => e.ext === "ai" || (withPdf 
 const targetCount = (folders: DirNode[], withPdf: boolean) =>
   uniqueFiles(folders).filter((e) => isTarget(e, withPdf)).length;
 
-/** A pick that would go over the limit, waiting for the reviewer's answer.
- *  (window.confirm is silently answered «취소» in some embedded browsers,
- *  such as the Claude desktop app's, so the question is asked on the page.) */
-export type LimitAsk = { n: number; apply: () => void };
+/** 경고창 for a pick over the limit. "blocked": adding it was refused;
+ *  "trimmed": one folder alone is over, so only the first BATCH_LIMIT are taken.
+ *  (Shown on the page: window.alert/confirm don't show in some embedded
+ *  browsers, such as the Claude desktop app's.) */
+export type LimitAsk = { n: number; kind: "blocked" | "trimmed"; what: "folder" | "pdf" };
 
 /** Folder review: checks the folder's files a few at a time; the reviewer's
  *  decision per file is saved on the server so the whole team sees it. */
@@ -168,38 +169,36 @@ export function useBatch() {
    *  it out of) the picked folders; once one has run, it starts a new pick. */
   const [limitAsk, setLimitAsk] = useState<LimitAsk | null>(null);
 
-  /** Applies a pick at once, or first asks when it goes over the limit. */
-  function guard(next: DirNode[], pdf: boolean, apply: () => void) {
-    const n = targetCount(next, pdf);
-    if (n <= BATCH_LIMIT) apply();
-    else setLimitAsk({ n, apply });
-  }
-
-  function answerLimit(ok: boolean) {
-    if (ok) limitAsk?.apply();
+  function closeLimit() {
     setLimitAsk(null);
   }
 
+  /** One folder alone may be over the limit (its first BATCH_LIMIT files are
+   *  checked, with a warning); adding to a pick past the limit is refused. */
   function choose(node: DirNode) {
-    if (items.length > 0) {
-      guard([node], withPdf, () => {
-        reset();
-        setFolders([node]);
-      });
-      return;
-    }
-    if (folders.some((f) => f.path === node.path)) {
+    const fresh = items.length > 0 || folders.length === 0;
+    if (!fresh && folders.some((f) => f.path === node.path)) {
       setFolders(folders.filter((f) => f.path !== node.path));
       return;
     }
-    const next = [...folders, node];
-    guard(next, withPdf, () => setFolders(next));
+    const next = fresh ? [node] : [...folders, node];
+    const n = targetCount(next, withPdf);
+    if (n > BATCH_LIMIT && !fresh) {
+      setLimitAsk({ n, kind: "blocked", what: "folder" });
+      return;
+    }
+    if (items.length > 0) reset();
+    setFolders(next);
+    if (n > BATCH_LIMIT) setLimitAsk({ n, kind: "trimmed", what: "folder" });
   }
 
   /** Taking PDFs in can push the pick over the limit too. */
   function changeWithPdf(on: boolean) {
-    if (on) guard(folders, true, () => setWithPdf(true));
-    else setWithPdf(false);
+    if (!on) return setWithPdf(false);
+    const n = targetCount(folders, true);
+    if (n > BATCH_LIMIT && targetCount(folders, false) <= BATCH_LIMIT)
+      return setLimitAsk({ n, kind: "blocked", what: "pdf" });
+    setWithPdf(true);
   }
 
   function remove(path: string) {
@@ -333,7 +332,7 @@ export function useBatch() {
     folders,
     remove,
     limitAsk,
-    answerLimit,
+    closeLimit,
     withPdf,
     setWithPdf: changeWithPdf,
     candidates,
@@ -667,15 +666,16 @@ export function LimitDialog({ batch }: { batch: Batch }) {
   }, [ask]);
   useEffect(() => {
     if (!ask) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && batch.answerLimit(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && batch.closeLimit();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [ask, batch]);
   if (!ask) return null;
+  const blocked = ask.kind === "blocked";
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[color-mix(in_srgb,var(--txt,#111)_45%,transparent)] p-4"
-      onClick={() => batch.answerLimit(false)}
+      onClick={batch.closeLimit}
     >
       <div
         role="alertdialog"
@@ -684,31 +684,39 @@ export function LimitDialog({ batch }: { batch: Batch }) {
         onClick={(e) => e.stopPropagation()}
         className="flex w-full max-w-md flex-col gap-3 rounded-lg border border-line bg-surface p-5 text-sm text-ink"
       >
-        <h2 id="limit-title" className="flex items-center gap-2 text-base font-bold text-warn">
+        <h2 id="limit-title" className="text-base font-bold text-warn">
           ⚠ 검토 한도 {BATCH_LIMIT}개 초과
         </h2>
-        <p>
-          고른 폴더의 검토 대상이 <b>{ask.n.toLocaleString()}개</b>로, 한 번에 검토할 수 있는 {BATCH_LIMIT}개를 넘습니다.
-        </p>
-        <p className="rounded-md bg-warn-soft px-3 py-2 text-xs text-warn">
-          이대로 선택하면 앞 {BATCH_LIMIT}개만 검토되고 나머지 {(ask.n - BATCH_LIMIT).toLocaleString()}개는 빠집니다.
-        </p>
-        <p className="text-xs text-ink-muted">빠지는 파일 없이 하려면 «선택 안 함»을 누르고 폴더를 나눠 따로 검토하세요.</p>
-        <div className="flex justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={() => batch.answerLimit(false)}
-            className="h-9 rounded-md border border-line-strong px-4 hover:bg-canvas"
-          >
-            선택 안 함
-          </button>
+        {blocked ? (
+          <>
+            <p>
+              {ask.what === "pdf" ? "PDF까지 넣으면" : "이 폴더를 더하면"} 검토 대상이 <b>{ask.n.toLocaleString()}개</b>가 되어, 한 번에
+              검토할 수 있는 {BATCH_LIMIT}개를 넘습니다.
+            </p>
+            <p className="rounded-md bg-warn-soft px-3 py-2 text-xs text-warn">
+              {ask.what === "pdf" ? "PDF는 넣지 않았습니다." : "이 폴더는 선택하지 않았습니다."} 지금 고른 것을 먼저 검토한 뒤, 따로
+              검토하세요.
+            </p>
+          </>
+        ) : (
+          <>
+            <p>
+              이 폴더의 검토 대상은 <b>{ask.n.toLocaleString()}개</b>로, 한 번에 검토할 수 있는 {BATCH_LIMIT}개를 넘습니다.
+            </p>
+            <p className="rounded-md bg-warn-soft px-3 py-2 text-xs text-warn">
+              앞 {BATCH_LIMIT}개만 검토되고 나머지 {(ask.n - BATCH_LIMIT).toLocaleString()}개는 빠집니다. 빠짐없이 하려면 하위 폴더를
+              골라 나눠 검토하세요.
+            </p>
+          </>
+        )}
+        <div className="flex justify-end pt-1">
           <button
             ref={okRef}
             type="button"
-            onClick={() => batch.answerLimit(true)}
-            className="h-9 rounded-md bg-brand-700 px-4 font-medium text-white hover:bg-brand-800"
+            onClick={batch.closeLimit}
+            className="h-9 min-w-20 rounded-md bg-brand-700 px-4 font-medium text-white hover:bg-brand-800"
           >
-            앞 {BATCH_LIMIT}개만 검토
+            확인
           </button>
         </div>
       </div>
