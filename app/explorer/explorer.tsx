@@ -14,7 +14,7 @@ import {
   type ScanProgress,
 } from "./file-tree";
 import { FilePanel } from "./file-panel";
-import { BatchPanel, ReviewBar, useBatch, type Batch } from "./batch";
+import { BatchPanel, LimitDialog, ReviewBar, useBatch, type Batch } from "./batch";
 import { Conclusion } from "../components/standard";
 
 type ExtFilter = "aipdf" | "all" | "ai" | "pdf" | "image";
@@ -730,6 +730,7 @@ export function Explorer() {
       </section>
     </div>
     <Conclusion>{conclusion}</Conclusion>
+    <LimitDialog batch={batch} />
     </>
   );
 }
