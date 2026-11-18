@@ -714,7 +714,14 @@ export function Explorer() {
         {selected ? (
           <>
             {batch.folder && <ReviewBar batch={batch} entry={selected} onOpen={select} onBack={() => setSelected(null)} />}
-            <FilePanel key={selected.path} entry={selected} rootName={rootName ?? ""} entries={entries} onSelect={select} />
+            <FilePanel
+              key={selected.path}
+              entry={selected}
+              rootName={rootName ?? ""}
+              folderName={roots.length === 1 ? roots[0].name : null}
+              entries={entries}
+              onSelect={select}
+            />
           </>
         ) : (
           !batch.folder && (

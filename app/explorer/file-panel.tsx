@@ -12,7 +12,8 @@ import {
   type TextFix,
   type TypoMark,
 } from "@/lib/illustrator-script";
-import { formatSize, type FileEntry } from "./file-tree";
+import { entryKey, formatSize, type FileEntry } from "./file-tree";
+import { fixInIllustrator, savedFile, useBridge, type BridgeResult } from "./bridge";
 import { extractLines, openPdf, pageAsJpeg, renderPage } from "./pdf-render";
 import { XmpEditor } from "./xmp-editor";
 import { OutlineHelp } from "./outline-help";
@@ -186,11 +187,14 @@ function download(text: string, name: string) {
 export function FilePanel({
   entry,
   rootName,
+  folderName,
   entries,
   onSelect,
 }: {
   entry: FileEntry;
   rootName: string;
+  /** The one opened folder's own name; null when several were opened. */
+  folderName: string | null;
   entries: FileEntry[];
   onSelect: (e: FileEntry) => void;
 }) {
@@ -284,6 +288,29 @@ export function FilePanel({
     return () => window.removeEventListener("focus", onFocus);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry, isPdf]);
+
+  // Illustrator 연결 도우미: open, fix and save in Illustrator from here.
+  const bridge = useBridge();
+  const [fixing, setFixing] = useState(false);
+  const [fixResult, setFixResult] = useState<BridgeResult | null>(null);
+
+  async function fixNow(fixes: TextFix[]) {
+    setFixing(true);
+    setFixResult(null);
+    const r = await fixInIllustrator({
+      base: folderName,
+      path: entryKey(entry),
+      size: entry.size ?? originalRef.current?.blob.size,
+      fileName: entry.name,
+      script: buildIllustratorScript(entry.name, fixes, { auto: true }),
+    });
+    setFixResult(r);
+    setFixing(false);
+    if (r.ok && r.saved) {
+      const blob = await savedFile(r.saved);
+      if (blob) showRevised({ blob: new Blob([blob], { type: "application/pdf" }), modified: Date.now() });
+    }
+  }
 
   async function onPicked(file: File | undefined) {
     if (!file) return;
@@ -630,6 +657,44 @@ export function FilePanel({
                 </>
               ) : canScript ? (
                 <>
+                  <div className="flex flex-col gap-2 rounded-md border border-line bg-surface p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={fixes.length === 0 || fixing || bridge !== "on"}
+                        onClick={() => void fixNow(fixes)}
+                        className="h-10 w-fit rounded bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+                      >
+                        {fixing ? "Illustrator에서 고치는 중…" : `Illustrator에서 바로 수정 (${fixes.length}건)`}
+                      </button>
+                      <span className={`text-xs ${bridge === "on" ? "text-pass" : "text-ink-muted"}`}>
+                        {bridge === "on" ? "● 연결 도우미 켜짐" : bridge === "off" ? "○ 연결 도우미 꺼짐" : "연결 확인 중…"}
+                      </span>
+                    </div>
+                    {bridge === "on" ? (
+                      <p className="text-xs leading-relaxed text-ink-muted">
+                        누르면 이 PC의 Illustrator가 <b>{entry.name}</b>을 열어 바뀐 글자만 고치고, 같은 폴더에{" "}
+                        <b>{entry.name.replace(/\.[^.]+$/, "")}_{today}.ai</b>로 저장합니다. 원본은 그대로 남고, 끝나면 수정 전·후가 나란히 보입니다.
+                      </p>
+                    ) : (
+                      bridge === "off" && (
+                        <p className="text-xs leading-relaxed text-ink-muted">
+                          버튼 한 번으로 고치려면 이 PC에서 <b>Illustrator 연결 도우미</b>를 켜 두세요(담당자에게 설치 요청). 켜지 않아도 아래처럼 스크립트를 받아 직접 실행할 수 있습니다.
+                        </p>
+                      )
+                    )}
+                    {fixResult &&
+                      (fixResult.ok ? (
+                        <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-canvas px-3 py-2 font-sans text-xs text-ink">
+                          {fixResult.report}
+                        </pre>
+                      ) : (
+                        <p role="alert" className="rounded-md border border-flag-line bg-flag-soft px-3 py-2 text-xs text-flag">
+                          {fixResult.message}
+                        </p>
+                      ))}
+                  </div>
+                  <p className="text-xs font-semibold text-ink-muted">또는 스크립트 파일로 받아 직접 실행</p>
                   <ol className="list-decimal pl-5 text-xs leading-relaxed text-ink-muted">
                     <li>아래 <b>수정 스크립트 적용</b> 버튼으로 스크립트(.jsx)를 받습니다.</li>
                     <li>Illustrator에서 <b>{entry.name}</b> 파일을 엽니다.</li>

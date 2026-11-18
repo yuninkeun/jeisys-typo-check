@@ -122,25 +122,43 @@ function applyFixes(doc, fixes) {
   return report;
 }
 
+/** AUTO: run by the 연결 도우미 from the web page — no questions, the report
+ *  is returned instead of shown, and TARGET_PATH names the file to open. */
+function isAuto() { return typeof AUTO !== "undefined" && AUTO; }
+function ask(q) { return isAuto() || confirm(q); }
+
+function openTarget() {
+  if (typeof TARGET_PATH === "undefined" || !TARGET_PATH) return;
+  var f = new File(TARGET_PATH);
+  for (var i = 0; i < app.documents.length; i++) {
+    try {
+      if (app.documents[i].fullName.fsName === f.fsName) { app.activeDocument = app.documents[i]; return; }
+    } catch (e) {}
+  }
+  app.open(f);
+}
+
+var LAST_SAVED = "";
+
+/** Returns the report ("" when the reviewer cancelled). */
 function main() {
+  if (isAuto()) openTarget();
   if (app.documents.length === 0) {
-    alert("열린 Illustrator 문서가 없습니다.\n수정할 파일(" + EXPECTED_FILE + ")을 먼저 열어 주세요.");
-    return;
+    return "열린 Illustrator 문서가 없습니다.\n수정할 파일(" + EXPECTED_FILE + ")을 먼저 열어 주세요.";
   }
   var doc = app.activeDocument;
   if (doc.name !== EXPECTED_FILE &&
-      !confirm("이 스크립트는 '" + EXPECTED_FILE + "'용입니다.\n지금 열린 문서는 '" + doc.name + "'입니다.\n그래도 적용할까요?")) {
-    return;
+      !ask("이 스크립트는 '" + EXPECTED_FILE + "'용입니다.\n지금 열린 문서는 '" + doc.name + "'입니다.\n그래도 적용할까요?")) {
+    return "";
   }
   var folder = null;
   try { folder = doc.path; } catch (e) { folder = null; }
   if (!folder || !folder.exists) {
-    alert("이 문서는 아직 저장된 적이 없어 저장할 폴더를 알 수 없습니다.\n원본 파일을 연 상태에서 다시 실행해 주세요.");
-    return;
+    return "이 문서는 아직 저장된 적이 없어 저장할 폴더를 알 수 없습니다.\n원본 파일을 연 상태에서 다시 실행해 주세요.";
   }
   var target = completedFile(folder, doc.name);
-  if (!confirm("오타 수정 " + FIXES.length + "건을 '" + doc.name + "'에 적용하고\n같은 폴더에 '" + decodeURI(target.name) + "'(으)로 저장합니다.\n원본 파일은 그대로 둡니다.")) {
-    return;
+  if (!ask("오타 수정 " + FIXES.length + "건을 '" + doc.name + "'에 적용하고\n같은 폴더에 '" + decodeURI(target.name) + "'(으)로 저장합니다.\n원본 파일은 그대로 둡니다.")) {
+    return "";
   }
   var r = applyFixes(doc, FIXES);
   var msg = "적용 " + r.applied.length + "건 / 못 찾음 " + r.missing.length + "건" +
@@ -149,8 +167,7 @@ function main() {
   if (r.missing.length) msg += "\n\n[못 찾음 — 윤곽선으로 바뀐 글자이거나 표기가 다릅니다. 직접 수정하세요]\n" + r.missing.join("\n");
   if (r.failed.length) msg += "\n\n[실패]\n" + r.failed.join("\n");
   if (r.applied.length === 0) {
-    alert(msg + "\n\n바뀐 글자가 없어 새 파일을 저장하지 않았습니다.");
-    return;
+    return msg + "\n\n바뀐 글자가 없어 새 파일을 저장하지 않았습니다.";
   }
   try {
     var opts = new IllustratorSaveOptions();
@@ -159,12 +176,13 @@ function main() {
     opts.embedLinkedFiles = false;
     opts.fontSubsetThreshold = 100;
     doc.saveAs(target, opts);
+    LAST_SAVED = target.fsName;
     msg += "\n\n[저장 완료]\n" + decodeURI(target.fsName) +
            "\n원본은 그대로 두었습니다. 지금 열린 문서는 새로 저장한 완성본입니다.";
   } catch (e) {
     msg += "\n\n[저장 실패] " + e + "\n파일 > 다른 이름으로 저장으로 직접 저장해 주세요.";
   }
-  alert(msg);
+  return msg;
 }
 
 /** "<name>_YYYYMMDD<suffix>.ai" next to the original; adds _2, _3… if that file exists. */
@@ -180,7 +198,12 @@ function completedFile(folder, name, suffix) {
 }
 `;
 
-export function buildIllustratorScript(fileName: string, fixes: TextFix[]): string {
+/** Separates the saved file's path from the report in an AUTO run's result. */
+export const AUTO_SPLIT = "\n@@JEISYS@@\n";
+
+/** auto: for the 연결 도우미, which puts `var TARGET_PATH = "…";` in front;
+ *  the script's value is then "<saved path>" + AUTO_SPLIT + "<report>". */
+export function buildIllustratorScript(fileName: string, fixes: TextFix[], { auto = false } = {}): string {
   const header = [
     "// Jeisys 오타 검증 — Illustrator 텍스트 수정 스크립트",
     `// 대상 파일: ${fileName}`,
@@ -191,9 +214,13 @@ export function buildIllustratorScript(fileName: string, fixes: TextFix[]): stri
     "#target illustrator",
     `var EXPECTED_FILE = ${toEs3Literal(fileName)};`,
     `var FIXES = ${toEs3Literal(fixes)};`,
+    `var AUTO = ${auto};`,
   ].join("\n");
   // Header comments are plain text for humans; escape only what goes into code.
-  return `${header}\n${SCRIPT_BODY}\nif (typeof app !== "undefined") main();\n`;
+  const run = auto
+    ? `var __report = main();\nLAST_SAVED + ${toEs3Literal(AUTO_SPLIT)} + __report;\n`
+    : `if (typeof app !== "undefined") { var __report = main(); if (__report) alert(__report); }\n`;
+  return `${header}\n${SCRIPT_BODY}\n${run}`;
 }
 
 export function scriptFileName(fileName: string) {
