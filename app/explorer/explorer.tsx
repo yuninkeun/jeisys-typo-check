@@ -34,17 +34,17 @@ function matchesExt(entry: FileEntry, filter: ExtFilter) {
 }
 
 const EXT_BADGE: Record<string, string> = {
-  ai: "border-[#f3c58a] bg-[#fff6ea] text-[#9a5b00]",
-  pdf: "border-flag-line bg-flag-soft text-flag",
-  png: "border-brand-200 bg-brand-50 text-brand-700",
-  jpg: "border-brand-200 bg-brand-50 text-brand-700",
-  jpeg: "border-brand-200 bg-brand-50 text-brand-700",
+  ai: "border-line bg-panel2 text-ink",
+  pdf: "border-line bg-panel2 text-ink",
+  png: "border-line bg-panel2 text-ink-muted",
+  jpg: "border-line bg-panel2 text-ink-muted",
+  jpeg: "border-line bg-panel2 text-ink-muted",
 };
 
 function ExtBadge({ ext }: { ext: string }) {
   return (
     <span
-      className={`w-9 shrink-0 rounded-sm border text-center text-[10px] font-bold uppercase leading-4 ${EXT_BADGE[ext]}`}
+      className={`w-9 shrink-0 rounded-sm border text-center text-[11px] font-bold uppercase leading-4 ${EXT_BADGE[ext]}`}
     >
       {ext === "jpeg" ? "jpg" : ext}
     </span>
@@ -93,9 +93,10 @@ function FileRow({
   );
 }
 
-const AI_COLOR = "#e8a23a";
-const PDF_COLOR = "#d6455d";
-const OTHER_COLOR = "#7b93c4";
+// 차트 범주색(표준 순서 고정): AI = s1, PDF = s2, 나머지 = 기타.
+const AI_COLOR = "var(--s1, #2a78d6)";
+const PDF_COLOR = "var(--s2, #eb6834)";
+const OTHER_COLOR = "var(--s-other, #9aa3b2)";
 
 /** One thin bar: how much of the parent folder this folder holds, split by type. */
 function ShareBar({ node, of }: { node: DirNode; of: number }) {
@@ -146,7 +147,7 @@ function DirBranch({
         style={{ paddingLeft: 8 + depth * 14 }}
         className="flex min-w-0 flex-1 items-center gap-1.5 py-[3px] pr-1 text-left text-[13px] font-medium text-ink"
       >
-        <span aria-hidden className={`inline-block w-3 shrink-0 text-[10px] text-ink-faint transition-transform ${open ? "rotate-90" : ""}`}>
+        <span aria-hidden className={`inline-block w-3 shrink-0 text-[11px] text-ink-faint transition-transform ${open ? "rotate-90" : ""}`}>
           ▶
         </span>
         <span aria-hidden className="shrink-0">{open ? "📂" : "📁"}</span>
@@ -154,9 +155,9 @@ function DirBranch({
           <span className="truncate">{node.name}</span>
           {depth > 0 && <ShareBar node={node} of={parentTotal} />}
         </span>
-        <span className="flex shrink-0 gap-1 text-[10px] font-semibold tabular-nums">
-          {node.ai > 0 && <span style={{ color: AI_COLOR }}>AI {node.ai}</span>}
-          {node.pdf > 0 && <span style={{ color: PDF_COLOR }}>PDF {node.pdf}</span>}
+        <span className="flex shrink-0 gap-1 text-[11px] font-semibold tabular-nums">
+          {node.ai > 0 && <span><span style={{ color: AI_COLOR }}>■</span> AI {node.ai}</span>}
+          {node.pdf > 0 && <span><span style={{ color: PDF_COLOR }}>■</span> PDF {node.pdf}</span>}
           {node.total - node.ai - node.pdf > 0 && <span className="text-ink-faint">기타 {node.total - node.ai - node.pdf}</span>}
         </span>
       </button>
@@ -223,12 +224,12 @@ function Overview({ tree, onOpen }: { tree: DirNode; onOpen: (path: string) => v
         onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-1.5 text-left text-xs font-bold text-ink"
       >
-        <span aria-hidden className={`inline-block text-[9px] text-ink-faint transition-transform ${open ? "rotate-90" : ""}`}>▶</span>
+        <span aria-hidden className={`inline-block text-[11px] text-ink-faint transition-transform ${open ? "rotate-90" : ""}`}>▶</span>
         구조 한눈에 보기
         <span className="font-normal text-ink-faint">— {level === tree ? "최상위" : level.name} 폴더 {top.length}개</span>
-        <span className="ml-auto flex gap-2 text-[10px] font-normal">
-          <span style={{ color: AI_COLOR }}>■ AI</span>
-          <span style={{ color: PDF_COLOR }}>■ PDF</span>
+        <span className="ml-auto flex gap-2 text-[11px] font-normal">
+          <span><span style={{ color: AI_COLOR }}>■</span> AI</span>
+          <span><span style={{ color: PDF_COLOR }}>■</span> PDF</span>
         </span>
       </button>
       {open && (
@@ -487,7 +488,7 @@ export function Explorer() {
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(320px,400px)_1fr]">
-      <aside className="flex min-h-[420px] flex-col overflow-hidden rounded border border-line bg-surface lg:h-[calc(100vh-170px)]">
+      <aside className="flex min-h-[420px] flex-col overflow-hidden rounded border border-line bg-surface lg:h-[calc(100vh-130px)]">
         <div className="flex flex-col gap-2.5 border-b border-line p-3">
           <div className="flex items-center gap-2">
             <button
@@ -550,7 +551,7 @@ export function Explorer() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="파일명·폴더명 검색 (예: POTENZA 멸균지)"
-                className="h-9 rounded border border-line-strong bg-white px-3 text-sm text-ink placeholder:text-ink-faint"
+                className="h-9 rounded border border-line-strong bg-surface px-3 text-sm text-ink placeholder:text-ink-faint"
               />
               <div className="flex items-center gap-1 rounded bg-canvas p-0.5 text-xs">
                 {(
@@ -567,7 +568,7 @@ export function Explorer() {
                       setExpanded(new Set([""]));
                     }}
                     className={`flex-1 rounded-sm px-2 py-1 font-medium ${
-                      view === v ? "bg-surface text-brand-700 shadow-sm" : "text-ink-muted hover:text-ink"
+                      view === v ? "bg-surface text-brand-700 font-semibold" : "text-ink-muted hover:text-ink"
                     }`}
                   >
                     {label}

@@ -147,7 +147,7 @@ export function XmpEditor({ entry }: { entry: FileEntry }) {
     );
   }
 
-  const input = "rounded border border-line-strong bg-white px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint";
+  const input = "rounded border border-line-strong bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint";
 
   return (
     <section className="flex flex-col gap-3 rounded border border-line bg-canvas p-4">
@@ -220,7 +220,7 @@ export function XmpEditor({ entry }: { entry: FileEntry }) {
               type="button"
               onClick={reset}
               disabled={!changed}
-              className="h-9 rounded border border-line-strong px-3 text-xs text-ink-muted hover:bg-white disabled:opacity-50"
+              className="h-9 rounded border border-line-strong px-3 text-xs text-ink-muted hover:bg-surface disabled:opacity-50"
             >
               원래대로
             </button>
@@ -236,7 +236,7 @@ export function XmpEditor({ entry }: { entry: FileEntry }) {
           )}
 
           {showXml && preview && !("error" in preview) && (
-            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded border border-line bg-white p-3 text-[11px] leading-relaxed text-ink-muted">
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded border border-line bg-surface p-3 text-[11px] leading-relaxed text-ink-muted">
               {preview.xml.replace(/(<xmpGImg:image>)[\s\S]*?(<\/xmpGImg:image>)/g, "$1(미리보기 이미지 생략)$2")}
             </pre>
           )}

@@ -71,14 +71,15 @@ export default async function CheckPage({
   minSelectableDate.setDate(minSelectableDate.getDate() - MAX_RANGE_DAYS);
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex flex-1 flex-col md:flex-row">
       <AppHeader />
 
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-10 px-6 py-10">
+      <div className="flex min-w-0 flex-1 flex-col">
+      <main className="flex w-full max-w-5xl min-w-0 flex-1 flex-col gap-10 px-4 py-6 md:px-8">
         <section className="flex flex-col gap-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <div className="flex flex-col gap-1">
-              <h1 className="text-xl font-bold text-ink">파일 검증</h1>
+              <h1 className="text-[22px] font-bold leading-tight text-ink">파일 검증</h1>
               <p className="text-sm text-ink-muted">
                 인쇄 전 일러스트 파일의 TEXT를 추출해 오탈자와 과거 이력과의
                 표기 차이를 확인합니다.
@@ -155,7 +156,7 @@ export default async function CheckPage({
                 defaultValue={fromParam}
                 min={toDateInputValue(minSelectableDate)}
                 max={toDateInputValue(today)}
-                className="rounded border border-line-strong bg-white px-2 py-1 text-xs text-ink"
+                className="rounded border border-line-strong bg-surface px-2 py-1 text-xs text-ink"
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -169,7 +170,7 @@ export default async function CheckPage({
                 defaultValue={toParam}
                 min={toDateInputValue(minSelectableDate)}
                 max={toDateInputValue(today)}
-                className="rounded border border-line-strong bg-white px-2 py-1 text-xs text-ink"
+                className="rounded border border-line-strong bg-surface px-2 py-1 text-xs text-ink"
               />
             </div>
             <button
@@ -248,11 +249,12 @@ export default async function CheckPage({
       </main>
 
       <footer className="border-t border-line py-5">
-        <p className="mx-auto max-w-5xl px-6 text-xs text-ink-faint">
+        <p className="max-w-5xl px-4 text-xs text-ink-faint md:px-8">
           제이시스메디칼 사내 검수 도구 · 검증 결과는 참고용이며 최종 확인은
           담당자가 수행합니다.
         </p>
       </footer>
+      </div>
     </div>
   );
 }

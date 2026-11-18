@@ -108,7 +108,7 @@ function AsIsToBeCard({
       )}
       <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-[1fr_auto_1fr]">
         <figure className="m-0 overflow-hidden rounded-sm border border-flag-line bg-surface">
-          <figcaption className="bg-flag px-2 py-1 text-[10px] font-bold tracking-widest text-white">
+          <figcaption className="bg-flag px-2 py-1 text-[11px] font-bold tracking-widest text-white">
             AS-IS
           </figcaption>
           <p className="px-3 py-2.5 text-sm text-flag line-through decoration-flag/50 decoration-2">
@@ -121,7 +121,7 @@ function AsIsToBeCard({
         </span>
 
         <figure className="m-0 flex flex-col overflow-hidden rounded-sm border border-pass-line bg-surface">
-          <figcaption className="bg-pass px-2 py-1 text-[10px] font-bold tracking-widest text-white">
+          <figcaption className="bg-pass px-2 py-1 text-[11px] font-bold tracking-widest text-white">
             TO-BE
           </figcaption>
           <p className="px-3 py-2.5 text-sm font-medium text-pass">
@@ -267,7 +267,7 @@ export function ResultView({ result }: { result: ResultData }) {
                       }
                     >
                       {line.is_flagged && flagNumbers[i] && (
-                        <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-flag text-[9px] font-bold text-white">
+                        <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-flag text-[11px] font-bold text-white">
                           {flagNumbers[i]}
                         </span>
                       )}

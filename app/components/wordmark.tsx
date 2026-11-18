@@ -1,41 +1,9 @@
-/** Mirrors the "Jeisys : CMS" lockup used across Jeisys internal tools. */
-export function Wordmark({
-  suffix = "오타 검증",
-  tone = "light",
-  size = "md",
-}: {
-  suffix?: string;
-  tone?: "light" | "dark";
-  size?: "md" | "lg";
-}) {
-  const isLight = tone === "light";
+/** Jeisys UI 표준 로고(표준 파일의 --logo) + 앱 이름. 로그인·가입 화면 머리에 쓴다. */
+export function Wordmark({ suffix = "오타 검증" }: { suffix?: string; tone?: "light" | "dark"; size?: "md" | "lg" }) {
   return (
-    <span className="inline-flex items-baseline gap-2 whitespace-nowrap">
-      <span
-        className={[
-          "font-serif tracking-tight",
-          size === "lg" ? "text-3xl" : "text-lg",
-          isLight ? "text-white" : "text-brand-700",
-        ].join(" ")}
-      >
-        Jeisys
-      </span>
-      <span
-        className={
-          isLight ? "text-sm text-brand-200" : "text-sm text-ink-faint"
-        }
-      >
-        :
-      </span>
-      <span
-        className={[
-          "font-medium",
-          size === "lg" ? "text-base" : "text-sm",
-          isLight ? "text-brand-100" : "text-ink-muted",
-        ].join(" ")}
-      >
-        {suffix}
-      </span>
+    <span className="inline-flex flex-col items-center gap-2">
+      <span className="jui-logo h-[28px]! w-[73px]!" role="img" aria-label="Jeisys" />
+      <span className="text-[22px] font-bold text-ink">{suffix}</span>
     </span>
   );
 }

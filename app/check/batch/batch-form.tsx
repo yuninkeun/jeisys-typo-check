@@ -30,7 +30,7 @@ export function BatchForm() {
             type="text"
             required
             placeholder={String.raw`예: C:\Users\이름\Documents\인쇄파일`}
-            className="w-full rounded border border-line-strong bg-white px-3 py-2.5 font-mono text-sm text-ink"
+            className="w-full rounded border border-line-strong bg-surface px-3 py-2.5 font-mono text-sm text-ink"
           />
           <p className="text-xs text-ink-faint">
             하위 폴더까지 모두 검색해 PDF를 찾고, 텍스트를 추출해 같은 폴더에

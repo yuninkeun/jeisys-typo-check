@@ -336,7 +336,7 @@ export function DecisionButtons({ batch, entry, size = "sm" }: { batch: Batch; e
   return (
     <span className="flex shrink-0 items-center gap-1">
       {info?.by && (
-        <span className="mr-0.5 text-[10px] text-ink-faint" title={info.at ? new Date(info.at).toLocaleString("ko-KR") : ""}>
+        <span className="mr-0.5 text-[11px] text-ink-faint" title={info.at ? new Date(info.at).toLocaleString("ko-KR") : ""}>
           {info.by}
           {info.at && ` · ${shortDate(info.at)}`}
         </span>
@@ -523,7 +523,7 @@ export function BatchPanel({ batch, onOpen }: { batch: Batch; onOpen: (e: FileEn
                       <span className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate text-[13px] text-ink" title={entryKey(it.entry)}>
                           {it.entry.name}
-                          {it.cached && <span className="ml-1 text-[10px] text-ink-faint">(저장된 결과)</span>}
+                          {it.cached && <span className="ml-1 text-[11px] text-ink-faint">(저장된 결과)</span>}
                         </span>
                         {dir && <span className="truncate text-[11px] text-ink-faint">{dir}</span>}
                         {it.samples && it.samples.length > 0 && (

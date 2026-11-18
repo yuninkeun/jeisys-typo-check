@@ -56,7 +56,7 @@ export function UploadForm() {
             accept="image/png,image/jpeg,application/pdf"
             required
             onChange={handleFileChange}
-            className="w-full cursor-pointer rounded border border-line-strong bg-white text-sm text-ink file:mr-3 file:cursor-pointer file:border-0 file:border-r file:border-line-strong file:bg-canvas file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-ink"
+            className="w-full cursor-pointer rounded border border-line-strong bg-surface text-sm text-ink file:mr-3 file:cursor-pointer file:border-0 file:border-r file:border-line-strong file:bg-canvas file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-ink"
           />
           <p className="text-xs text-ink-faint">
             제품명은 파일 이름에서 자동으로 인식합니다. (예: 파일명에

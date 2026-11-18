@@ -123,7 +123,7 @@ export function OutlineHelp({
               const s = checks[c.path];
               return (
                 <li key={c.path} className="flex flex-wrap items-center gap-2 rounded border border-line bg-surface px-3 py-1.5 text-xs">
-                  <span className="rounded-sm border border-line-strong px-1 text-[10px] uppercase text-ink-muted">{c.ext}</span>
+                  <span className="rounded-sm border border-line-strong px-1 text-[11px] uppercase text-ink-muted">{c.ext}</span>
                   <span className="min-w-0 flex-1 break-all text-ink" title={c.path}>
                     {c.path}
                     {c.size != null && <span className="ml-1 text-ink-faint">· {formatSize(c.size)}</span>}

@@ -421,7 +421,7 @@ export function ProofEditor({
           <ol className="flex flex-col gap-1 text-xs">
             {numbered.map((m) => (
               <li key={m.key} className="flex flex-wrap items-baseline gap-x-2 rounded border border-line px-2.5 py-1.5">
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#e00012] text-[10px] font-bold text-white">
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#e00012] text-[11px] font-bold text-white">
                   {m.n}
                 </span>
                 <span className="text-ink-faint">p.{m.page}</span>

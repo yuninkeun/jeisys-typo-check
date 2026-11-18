@@ -1,19 +1,11 @@
 import type { Metadata } from "next";
-import { Lora, Noto_Sans_KR } from "next/font/google";
 import "./globals.css";
 
-const notoSansKr = Noto_Sans_KR({
-  variable: "--font-noto-sans-kr",
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-});
+/** Jeisys UI 표준 서버. 복사하지 않고 연결해야 표준이 바뀔 때 같이 따라온다. */
+const JUI = "https://zealous-cliff-0e4d81210.7.azurestaticapps.net/v1";
 
-// Stands in for the Palatino-style serif used in the Jeisys wordmark.
-const lora = Lora({
-  variable: "--font-lora",
-  subsets: ["latin"],
-  weight: ["700"],
-});
+// 라이트가 기본, 다크는 사이드바 버튼으로 고른 사람만. 첫 화면이 깜빡이지 않게 <head> 에서 정한다.
+const THEME_SCRIPT = `try{document.documentElement.dataset.theme=localStorage.getItem("ui_theme")==="dark"?"dark":"light"}catch(e){}`;
 
 export const metadata: Metadata = {
   title: "Jeisys 오타 검증",
@@ -22,10 +14,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="ko"
-      className={`${notoSansKr.variable} ${lora.variable} h-full antialiased`}
-    >
+    <html lang="ko" data-theme="light" className="h-full antialiased" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <link rel="stylesheet" href={`${JUI}/jui-palette.css`} />
+        <link rel="stylesheet" href={`${JUI}/jui-common.css`} />
+        <script src={`${JUI}/jui-common.js`} defer />
+      </head>
       <body className="flex min-h-full flex-col">{children}</body>
     </html>
   );

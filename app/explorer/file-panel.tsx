@@ -100,12 +100,12 @@ function Preview({
           <canvas ref={canvasRef} className={`${maxH} max-w-full object-contain shadow-sm`} />
         )}
         {status === "loading" && (
-          <span className="absolute inset-0 flex items-center justify-center bg-white/60 text-sm text-ink-muted">
+          <span className="absolute inset-0 flex items-center justify-center bg-surface/60 text-sm text-ink-muted">
             미리보기 만드는 중…
           </span>
         )}
         {status === "error" && (
-          <span className="absolute inset-0 flex items-center justify-center bg-white text-center text-sm text-ink-muted">
+          <span className="absolute inset-0 flex items-center justify-center bg-surface text-center text-sm text-ink-muted">
             미리보기를 만들 수 없습니다.
             <br />
             (PDF 호환 저장이 꺼진 .ai 파일일 수 있습니다)
@@ -705,7 +705,7 @@ function TextRow({
             <button
               type="button"
               onClick={() => setDraft(applied && edit ? edit.to : (suggestion ?? line.text))}
-              className={`${btn} border border-line-strong bg-white text-ink-muted hover:bg-canvas`}
+              className={`${btn} border border-line-strong bg-surface text-ink-muted hover:bg-canvas`}
             >
               직접수정
             </button>
@@ -719,10 +719,10 @@ function TextRow({
       </div>
 
       <div className="grid grid-cols-[3.5rem_1fr] items-start gap-x-2 gap-y-1 text-sm">
-        <span className="pt-0.5 text-[10px] font-bold tracking-wider text-ink-faint">AS-IS</span>
+        <span className="pt-0.5 text-[11px] font-bold tracking-wider text-ink-faint">AS-IS</span>
         <span className="whitespace-pre-wrap break-words text-ink">{line.text}</span>
 
-        <span className="pt-0.5 text-[10px] font-bold tracking-wider text-pass">TO-BE</span>
+        <span className="pt-0.5 text-[11px] font-bold tracking-wider text-pass">TO-BE</span>
         {draft !== null ? (
           <div className="flex flex-col gap-1.5">
             <input
@@ -733,7 +733,7 @@ function TextRow({
                 if (e.key === "Enter") confirm();
                 if (e.key === "Escape") setDraft(null);
               }}
-              className="rounded-sm border border-pass-line bg-white px-2 py-1 text-sm font-medium text-ink outline-none focus:ring-2 focus:ring-pass/30"
+              className="rounded-sm border border-pass-line bg-surface px-2 py-1 text-sm font-medium text-ink outline-none focus:ring-2 focus:ring-pass/30"
             />
             {draft !== line.text && draft.trim() !== "" && (
               <span className="text-xs text-ink-muted">
@@ -744,7 +744,7 @@ function TextRow({
               <button type="button" onClick={confirm} className={`${btn} bg-pass text-white`}>
                 확인
               </button>
-              <button type="button" onClick={() => setDraft(null)} className={`${btn} border border-line-strong bg-white text-ink-muted`}>
+              <button type="button" onClick={() => setDraft(null)} className={`${btn} border border-line-strong bg-surface text-ink-muted`}>
                 취소
               </button>
             </div>
@@ -753,7 +753,7 @@ function TextRow({
           <DiffText from={line.text} to={edit.to} />
         ) : suggestion ? (
           <span className="text-ink-muted">
-            <span className="mr-1 text-[10px] text-ink-faint">(제안)</span>
+            <span className="mr-1 text-[11px] text-ink-faint">(제안)</span>
             <DiffText from={line.text} to={suggestion} />
           </span>
         ) : (

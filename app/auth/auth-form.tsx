@@ -10,7 +10,7 @@ type Props = {
 };
 
 const fieldClass =
-  "h-11 w-full rounded border border-line-strong bg-white px-3 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15";
+  "h-11 w-full rounded border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15";
 
 export function AuthForm({ mode, redirectTo = "/" }: Props) {
   const isSignUp = mode === "signup";
@@ -22,7 +22,7 @@ export function AuthForm({ mode, redirectTo = "/" }: Props) {
   return (
     <form
       action={formAction}
-      className="flex flex-col gap-5 rounded border border-line bg-surface p-7 shadow-[0_1px_2px_rgba(26,29,35,0.04),0_8px_24px_-16px_rgba(26,29,35,0.25)]"
+      className="flex flex-col gap-5 rounded border border-line bg-surface p-7"
     >
       <div className="flex flex-col gap-1">
         <h1 className="text-lg font-bold text-ink">
