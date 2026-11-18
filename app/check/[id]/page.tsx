@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AppHeader } from "../../components/app-header";
+import { Basis, Conclusion, DataBadge, stamp } from "../../components/standard";
 import {
   ResultView,
   type ResultLine,
@@ -97,6 +98,17 @@ export default async function CheckDetailPage({
     texts: lines.map((l) => l.text),
   });
 
+  const open = lines.filter((l) => l.is_flagged && !l.resolution).length;
+  const flaggedTotal = lines.filter((l) => l.is_flagged).length;
+  const conclusion =
+    doc.status === "failed"
+      ? "검사가 실패했다 — 파일을 다시 올려 검사한다."
+      : open > 0
+        ? `오타 의심 ${open}줄이 남았다 — 한 줄씩 확인해 고치거나 «문제없음»으로 처리하고, 고친 파일은 다시 올려 검사한다.`
+        : flaggedTotal > 0
+          ? `의심 ${flaggedTotal}줄을 모두 처리했다 — 고친 파일을 다시 검사해 의심이 사라졌는지 확인하고 인쇄로 넘긴다.`
+          : "오타 의심이 없다 — 담당자가 최종 확인한 뒤 인쇄로 넘긴다.";
+
   return (
     <div className="flex flex-1 flex-col md:flex-row">
       <AppHeader />
@@ -107,6 +119,31 @@ export default async function CheckDetailPage({
         >
           ← 검증 이력
         </Link>
+        <div className="flex items-center gap-2">
+          <h1 className="min-w-0 truncate text-[22px] font-bold leading-tight text-ink">{doc.original_filename}</h1>
+          <DataBadge />
+        </div>
+        <p className="-mt-2 text-sm text-ink-muted">
+          이 파일을 인쇄로 넘겨도 되나 — 오탈자·예전과 다른 표기가 남았는지
+        </p>
+        <Basis
+          rows={[
+            {
+              fact: "추출 TEXT",
+              src: "서버 검증 기록(text_extractions)",
+              cond: `${lines.length}줄`,
+              asof: `검사 ${stamp(doc.created_at)}`,
+              tag: "정본",
+            },
+            {
+              fact: "오타 의심",
+              src: "AI 검사 + 과거 검증 이력과 표기 비교",
+              cond: "참고값, 최종 판단은 담당자",
+              asof: `검사 ${stamp(doc.created_at)}`,
+              tag: "기준 확인 필요",
+            },
+          ]}
+        />
 
         {doc.status === "failed" ? (
           <p className="rounded border border-flag-line bg-flag-soft px-4 py-3 text-sm text-flag">
@@ -123,6 +160,7 @@ export default async function CheckDetailPage({
             }}
           />
         )}
+        <Conclusion>{conclusion}</Conclusion>
       </main>
     </div>
   );

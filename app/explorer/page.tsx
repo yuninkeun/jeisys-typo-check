@@ -1,5 +1,6 @@
 import { AppHeader } from "../components/app-header";
 import { Explorer } from "./explorer";
+import { Basis, DataBadge } from "../components/standard";
 
 export const metadata = { title: "폴더 탐색 · Jeisys 오타 검증" };
 
@@ -9,12 +10,39 @@ export default function ExplorerPage() {
       <AppHeader />
       <main className="flex w-full max-w-[1440px] min-w-0 flex-1 flex-col gap-4 px-4 py-6 md:px-8">
         <div className="flex flex-col gap-1">
-          <h1 className="text-[22px] font-bold leading-tight text-ink">폴더 탐색</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-[22px] font-bold leading-tight text-ink">폴더 탐색</h1>
+            <DataBadge />
+          </div>
           <p className="text-sm text-ink-muted">
-            폴더 구조에서 AI·PDF 파일을 찾아 오타를 검사하고, 고친 내용을 Illustrator
-            스크립트로 받아 텍스트만 수정합니다.
+            검수 담당이 묻는 질문 — 이 폴더의 박스·스티커·멸균지 파일 중 오타 의심이 남은 것은 무엇이고, 누가 어떻게 결정했나
           </p>
         </div>
+        <Basis
+          rows={[
+            {
+              fact: "파일 목록",
+              src: "이 PC에서 연 폴더",
+              cond: "브라우저에서만 읽고, 검사할 파일만 서버로 보냄",
+              asof: "폴더를 연 시점",
+              tag: "정본",
+            },
+            {
+              fact: "오타 의심",
+              src: "AI 검사 + 과거 검증 이력과 표기 비교",
+              cond: "같은 파일은 저장된 결과 재사용",
+              asof: "파일을 검사한 시각",
+              tag: "기준 확인 필요",
+            },
+            {
+              fact: "담당자 결정",
+              src: "서버 결정 기록(review_decisions)",
+              cond: "파일 내용 기준(경로가 달라도 같은 파일이면 같은 결정)",
+              asof: "결정한 시각",
+              tag: "정본",
+            },
+          ]}
+        />
         <Explorer />
       </main>
     </div>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AppHeader } from "../components/app-header";
 import { createClient } from "@/lib/supabase/server";
 import { UploadForm } from "./upload-form";
+import { Basis, Conclusion, DataBadge, stamp } from "../components/standard";
 
 const MAX_RANGE_DAYS = 182; // ~6 months
 
@@ -66,6 +67,27 @@ export default async function CheckPage({
 
   const emailById = new Map((users ?? []).map((u) => [u.id, u.email]));
 
+  // 결론 줄: 목록에서 아직 담당자가 처리하지 않은 오타 의심이 남은 파일.
+  const docs = documents ?? [];
+  const pending = docs.filter((d) => {
+    const ex = (d.text_extractions as { is_flagged: boolean; resolution: string | null }[] | null) ?? [];
+    return d.status !== "failed" && ex.some((e) => e.is_flagged && !e.resolution);
+  });
+  const failed = docs.filter((d) => d.status === "failed").length;
+  const scope = `${userFilter ? (emailById.get(userFilter) ?? "선택한 사람") : "전체 담당자"} · ${
+    range ? `${toDateInputValue(range.from)} ~ ${toDateInputValue(range.to)}` : "최근 20건"
+  }`;
+  const retry = failed ? ` 실패 ${failed}건은 다시 올린다.` : "";
+  const conclusion =
+    docs.length === 0
+      ? "이 조건에 검증 이력이 없다 — 인쇄 전 파일을 위에 올려 먼저 검사한다."
+      : pending.length > 0
+        ? `이력 ${docs.length}건 중 오타 의심이 남은 ${pending.length}건(${pending
+            .slice(0, 2)
+            .map((d) => d.original_filename)
+            .join(", ")}${pending.length > 2 ? " …" : ""})을 열어 고치거나 처리한 뒤 인쇄로 넘긴다.${retry}`
+        : `이력 ${docs.length}건 모두 의심이 처리됐다 — 새 파일만 올려 검사하면 된다.${retry}`;
+
   const today = new Date();
   const minSelectableDate = new Date(today);
   minSelectableDate.setDate(minSelectableDate.getDate() - MAX_RANGE_DAYS);
@@ -79,10 +101,12 @@ export default async function CheckPage({
         <section className="flex flex-col gap-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <div className="flex flex-col gap-1">
-              <h1 className="text-[22px] font-bold leading-tight text-ink">파일 검증</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-[22px] font-bold leading-tight text-ink">파일 검증</h1>
+                <DataBadge />
+              </div>
               <p className="text-sm text-ink-muted">
-                인쇄 전 일러스트 파일의 TEXT를 추출해 오탈자와 과거 이력과의
-                표기 차이를 확인합니다.
+                디자인·생산 담당이 인쇄 전에 묻는 질문 — 이 파일의 TEXT에 오탈자나 예전과 다른 표기가 있나
               </p>
             </div>
             <Link
@@ -92,6 +116,18 @@ export default async function CheckPage({
               폴더 일괄 PDF→CSV 추출 →
             </Link>
           </div>
+          <Basis
+            rows={[
+              { fact: "검증 이력", src: "서버 검증 기록(documents)", cond: scope, asof: stamp(), tag: "정본" },
+              {
+                fact: "오타 의심",
+                src: "AI 검사 + 과거 검증 이력과 표기 비교",
+                cond: "참고값, 최종 판단은 담당자",
+                asof: "파일을 검사한 시각",
+                tag: "기준 확인 필요",
+              },
+            ]}
+          />
           <UploadForm />
         </section>
 
@@ -246,6 +282,7 @@ export default async function CheckPage({
             </ul>
           )}
         </section>
+        <Conclusion>{conclusion}</Conclusion>
       </main>
 
       <footer className="border-t border-line py-5">

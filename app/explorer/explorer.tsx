@@ -14,7 +14,8 @@ import {
   type ScanProgress,
 } from "./file-tree";
 import { FilePanel } from "./file-panel";
-import { BatchPanel, ReviewBar, useBatch } from "./batch";
+import { BatchPanel, ReviewBar, useBatch, type Batch } from "./batch";
+import { Conclusion } from "../components/standard";
 
 type ExtFilter = "aipdf" | "all" | "ai" | "pdf" | "image";
 
@@ -486,7 +487,10 @@ export function Explorer() {
     return c;
   }, [entries]);
 
+  const conclusion = explorerConclusion(batch, rootName, entries);
+
   return (
+    <>
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(320px,400px)_1fr]">
       <aside className="flex min-h-[420px] flex-col overflow-hidden rounded border border-line bg-surface lg:h-[calc(100vh-130px)]">
         <div className="flex flex-col gap-2.5 border-b border-line p-3">
@@ -724,5 +728,30 @@ export function Explorer() {
         )}
       </section>
     </div>
+    <Conclusion>{conclusion}</Conclusion>
+    </>
   );
+}
+
+/** 결론 줄(Jeisys UI 표준): 지금 화면이 말하는 다음 행동 한 가지. */
+function explorerConclusion(batch: Batch, rootName: string | null, entries: FileEntry[]) {
+  if (!rootName) return "검사할 폴더(예: D:\\라벨 관련자료)를 열고, 박스 → 스티커 → 멸균지 순서로 폴더별 «검토»를 돌린다.";
+  const done = batch.items.filter((it) => it.status === "done");
+  if (!batch.folder || batch.items.length === 0) {
+    const ai = entries.filter((e) => e.ext === "ai").length;
+    return `AI 파일 ${ai.toLocaleString("ko-KR")}개가 열렸다 — 박스 폴더부터 «검토»를 눌러 한 번에 최대 200개씩 검사한다.`;
+  }
+  const suspect = done.filter((it) => (it.flagged ?? 0) > 0);
+  const undecided = suspect.filter((it) => !batch.decisionOf(it.entry));
+  const fix = done.filter((it) => batch.decisionOf(it.entry) === "fix").length;
+  const errors = batch.items.filter((it) => it.status === "error").length;
+  const where = `${batch.folder.name} 검토`;
+  if (batch.running)
+    return `${where} 중(${done.length}/${batch.items.length}) — 끝난 파일 중 오타 의심 ${suspect.length}개부터 열어 결정한다.`;
+  const tailNote = errors ? ` 검사 오류 ${errors}개는 파일을 열어 다시 검사한다.` : "";
+  if (undecided.length > 0)
+    return `${where}: 오타 의심 ${suspect.length}개 중 담당자 결정 전 ${undecided.length}개 — 열어 보고 문제없음·수정 필요·보류를 정한다.${tailNote}`;
+  if (suspect.length > 0)
+    return `${where}: 의심 파일 결정이 모두 끝났다 — «수정 필요» ${fix}개는 원본을 고쳐 다시 검토하고, 다음 폴더로 넘어간다.${tailNote}`;
+  return `${where}: 오타 의심 없음 — 다음 폴더를 검토한다.${tailNote}`;
 }

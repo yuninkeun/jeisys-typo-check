@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AppHeader } from "../../components/app-header";
 import { BatchForm } from "./batch-form";
+import { Basis, Conclusion, DataBadge } from "../../components/standard";
 
 export default function BatchExtractPage() {
   return (
@@ -16,7 +17,10 @@ export default function BatchExtractPage() {
           >
             ← 파일 검증으로 돌아가기
           </Link>
-          <h1 className="text-[22px] font-bold leading-tight text-ink">폴더 일괄 텍스트 추출</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-[22px] font-bold leading-tight text-ink">폴더 일괄 텍스트 추출</h1>
+            <DataBadge />
+          </div>
           <p className="text-sm text-ink-muted">
             서버(이 앱을 실행 중인 PC)의 폴더 경로를 입력하면 그 안의 모든 PDF를
             찾아 텍스트를 추출하고, 같은 폴더에 CSV 파일로 저장합니다. 로컬
@@ -24,7 +28,21 @@ export default function BatchExtractPage() {
           </p>
         </div>
 
+        <Basis
+          rows={[
+            {
+              fact: "PDF 텍스트",
+              src: "이 앱을 실행 중인 PC의 폴더",
+              cond: "하위 폴더 포함 모든 PDF",
+              asof: "추출을 누른 시각",
+              tag: "정본",
+            },
+          ]}
+        />
         <BatchForm />
+        <Conclusion>
+          로컬 실행(next dev) 중에 폴더 경로를 넣어 CSV를 만들고, 오탈자 판정은 파일 검증 화면에서 한다.
+        </Conclusion>
       </main>
 
       <footer className="border-t border-line py-5">
