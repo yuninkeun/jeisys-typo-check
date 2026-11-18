@@ -85,6 +85,33 @@ async function checkOne(entry: FileEntry): Promise<Partial<BatchItem>> {
   };
 }
 
+/** Every file under the picked folders once (a folder inside another picked
+ *  folder adds nothing twice), in the order the folders were picked. */
+function uniqueFiles(folders: DirNode[]) {
+  const seen = new Set<string>();
+  const out: FileEntry[] = [];
+  for (const f of folders)
+    for (const e of filesUnder(f))
+      if (!seen.has(entryKey(e))) {
+        seen.add(entryKey(e));
+        out.push(e);
+      }
+  return out;
+}
+
+const isTarget = (e: FileEntry, withPdf: boolean) => e.ext === "ai" || (withPdf && e.ext === "pdf");
+
+/** Asks before a pick goes over the limit; files past it would not be checked. */
+function overLimitOk(folders: DirNode[], withPdf: boolean) {
+  const n = uniqueFiles(folders).filter((e) => isTarget(e, withPdf)).length;
+  if (n <= BATCH_LIMIT) return true;
+  return window.confirm(
+    `⚠ 검토 대상이 ${n.toLocaleString()}개로, 한 번에 검토할 수 있는 ${BATCH_LIMIT}개를 넘습니다.\n\n` +
+      `이대로 진행하면 앞 ${BATCH_LIMIT}개만 검토되고 나머지 ${(n - BATCH_LIMIT).toLocaleString()}개는 빠집니다.\n` +
+      `폴더를 나눠 따로 검토하려면 «취소»를 누르세요.\n\n그래도 선택할까요?`,
+  );
+}
+
 /** Folder review: checks the folder's files a few at a time; the reviewer's
  *  decision per file is saved on the server so the whole team sees it. */
 export function useBatch() {
@@ -113,22 +140,10 @@ export function useBatch() {
     setStore("local");
   }
 
-  /** Every file under the picked folders once (a folder inside another picked
-   *  folder adds nothing twice), in the order the folders were picked. */
-  const files = useMemo(() => {
-    const seen = new Set<string>();
-    const out: FileEntry[] = [];
-    for (const f of folders)
-      for (const e of filesUnder(f))
-        if (!seen.has(entryKey(e))) {
-          seen.add(entryKey(e));
-          out.push(e);
-        }
-    return out;
-  }, [folders]);
+  const files = useMemo(() => uniqueFiles(folders), [folders]);
 
   const candidates = useMemo(() => {
-    const all = files.filter((e) => e.ext === "ai" || (withPdf && e.ext === "pdf"));
+    const all = files.filter((e) => isTarget(e, withPdf));
     return { all: all.length, list: all.slice(0, BATCH_LIMIT) };
   }, [files, withPdf]);
 
@@ -156,11 +171,23 @@ export function useBatch() {
    *  it out of) the picked folders; once one has run, it starts a new pick. */
   function choose(node: DirNode) {
     if (items.length > 0) {
+      if (!overLimitOk([node], withPdf)) return;
       reset();
       setFolders([node]);
       return;
     }
-    setFolders((prev) => (prev.some((f) => f.path === node.path) ? prev.filter((f) => f.path !== node.path) : [...prev, node]));
+    if (folders.some((f) => f.path === node.path)) {
+      setFolders(folders.filter((f) => f.path !== node.path));
+      return;
+    }
+    if (!overLimitOk([...folders, node], withPdf)) return;
+    setFolders([...folders, node]);
+  }
+
+  /** Taking PDFs in can push the pick over the limit too. */
+  function changeWithPdf(on: boolean) {
+    if (on && !overLimitOk(folders, true)) return;
+    setWithPdf(on);
   }
 
   function remove(path: string) {
@@ -294,7 +321,7 @@ export function useBatch() {
     folders,
     remove,
     withPdf,
-    setWithPdf,
+    setWithPdf: changeWithPdf,
     candidates,
     items,
     running,
