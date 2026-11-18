@@ -492,7 +492,7 @@ export function Explorer() {
   return (
     <>
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(320px,400px)_1fr]">
-      <aside className="flex min-h-[420px] flex-col overflow-hidden rounded border border-line bg-surface lg:h-[calc(100vh-130px)]">
+      <aside className="flex min-h-[420px] flex-col overflow-hidden rounded border border-line bg-surface lg:h-[calc(100vh-250px)]">
         <div className="flex flex-col gap-2.5 border-b border-line p-3">
           <div className="flex items-center gap-2">
             <button
