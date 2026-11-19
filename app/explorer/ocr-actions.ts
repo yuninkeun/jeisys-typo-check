@@ -187,6 +187,13 @@ export async function saveFindingDecision(input: {
     .select("content_hash, word, suggest, decision, decided_by, decided_at")
     .single();
   if (error) return fail(error);
+  // A confirmed typo means this file has to be fixed: mark it so in the file
+  // decisions (폴더 일괄 검토's «수정 필요») — best effort.
+  if (input.decision === "typo") {
+    await supabase
+      .from("review_decisions")
+      .upsert({ content_hash: input.hash, decision: "fix", file_name: input.fileName, decided_by: user.id, decided_at: new Date().toISOString() }, { onConflict: "content_hash" });
+  }
   const r = data as DecisionDbRow;
   const who = await names(supabase, [r.decided_by]);
   return { ok: true, row: { hash: r.content_hash, word: r.word, suggest: r.suggest, decision: r.decision, by: who.get(r.decided_by) ?? "", at: r.decided_at } };

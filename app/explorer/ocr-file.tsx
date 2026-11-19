@@ -17,7 +17,7 @@ import { sha256 } from "./batch";
 import { localGet, localMarkUploaded, localPut, ocrFile, useBridgeInfo, type LocalDoc, type LocalLine } from "./bridge";
 import { categoryOf, entryKey, type FileEntry } from "./file-tree";
 import { checkAgainstDb, getFindingDecisions, getStoredOcr, guessCategory, saveFindingDecision, saveOcr, type LabelCategory } from "./ocr-actions";
-import { Section, type Decide, type OcrRow } from "./ocr-batch";
+import { DecideHelp, DecideNotice, Section, decisionNotice, shownVerdict, type Decide, type OcrRow } from "./ocr-batch";
 
 /** 기준 대비 검사: this one label against the labels of its category in the
  *  OCR 문구 DB. Free (Windows OCR via the 연결 도우미); a label read before
@@ -62,6 +62,7 @@ export function OcrFileCheck({
   /** The team's decisions (null = the table isn't set up yet). */
   const [decisions, setDecisions] = useState<DecisionRow[] | null>([]);
   const [decideError, setDecideError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const runRef = useRef(0);
   /** A newer run (or leaving the file) makes an older one stop writing. */
   const cancel = () => {
@@ -210,15 +211,28 @@ export function OcrFileCheck({
           onDecide: async (r, d: FindingDecision | null) => {
             if (!r.hash) return;
             setDecideError(null);
+            setNotice(null);
             const res = await saveFindingDecision({ hash: r.hash, word: r.word, suggest: r.suggest, decision: d, fileName: entry.name });
             if (!res.ok) return setDecideError(res.reason === "not_ready" ? "판정을 저장할 곳이 아직 준비되지 않았습니다." : (res.message ?? "판정을 저장하지 못했습니다."));
             setDecisions((prev) => [
               ...(prev ?? []).filter((x) => !(x.hash === r.hash && x.word === r.word && x.suggest === r.suggest)),
               ...(res.row ? [res.row] : []),
             ]);
+            setNotice(decisionNotice(r.word, d));
           },
           error: decideError,
+          notice,
         };
+
+  // The card header counts follow decisions made here.
+  useEffect(() => {
+    if (state.step !== "done") return;
+    onSummary?.({
+      typo: state.rows.filter((r) => shownVerdict(r, decide) === "typo").length,
+      unclear: state.rows.filter((r) => shownVerdict(r, decide) === "unclear").length,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decisions, state]);
 
   // Runs by itself when a label is opened (free; a label read before takes a second or two).
   useEffect(() => {
@@ -230,7 +244,7 @@ export function OcrFileCheck({
   }, [entryKey(entry), bridge.state]);
 
   if (!isLabelFile) return null;
-  const count = (v: OcrVerdict) => (state.step === "done" ? state.rows.filter((r) => r.verdict === v).length : 0);
+  const count = (v: OcrVerdict) => (state.step === "done" ? state.rows.filter((r) => shownVerdict(r, decide) === v).length : 0);
   const against = (s: Done) =>
     s.category === "전체"
       ? `어떤 라벨인지 판별하기 어려워 모든 라벨 ${s.reference.toLocaleString()}개와 비교`
@@ -264,12 +278,13 @@ export function OcrFileCheck({
           {count("typo") + count("unclear") === 0 ? (
             <p className="rounded border border-pass-line bg-pass-soft px-3 py-2 text-xs text-pass">다른 라벨들과 다르게 쓴 글자를 찾지 못했습니다.</p>
           ) : (
-            VERDICTS.map((v) => <Section key={v} v={v} rows={state.rows} onOpen={onOpen} crops decide={decide} />)
-          )}
-          {decideError && (
-            <p role="alert" className="text-xs text-flag">
-              {decideError}
-            </p>
+            <>
+              {decide && <DecideHelp />}
+              <DecideNotice decide={decide} />
+              {VERDICTS.map((v) => (
+                <Section key={v} v={v} rows={state.rows} onOpen={onOpen} crops decide={decide} />
+              ))}
+            </>
           )}
           {state.approved > 0 && <p className="text-xs text-ink-muted">«정상 표기»로 판정된 {state.approved}건은 빼고 보여 줍니다.</p>}
           {!state.reread && state.rows.some((r) => !r.ocrLike && !r.rule) && (

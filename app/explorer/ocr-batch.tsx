@@ -53,6 +53,7 @@ export function useOcr() {
   /** The team's decisions on suspects (null = the table isn't set up yet). */
   const [decisions, setDecisions] = useState<DecisionRow[] | null>([]);
   const [decideError, setDecideError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [approved, setApproved] = useState(0);
   const runRef = useRef(0);
 
@@ -273,14 +274,17 @@ export function useOcr() {
           onDecide: async (r, d) => {
             if (!r.hash) return;
             setDecideError(null);
+            setNotice(null);
             const res = await saveFindingDecision({ hash: r.hash, word: r.word, suggest: r.suggest, decision: d, fileName: r.entry.name });
             if (!res.ok) return setDecideError(res.reason === "not_ready" ? "판정 저장소가 아직 준비되지 않았습니다." : (res.message ?? "판정을 저장하지 못했습니다."));
             setDecisions((prev) => [
               ...(prev ?? []).filter((x) => !(x.hash === r.hash && x.word === r.word && x.suggest === r.suggest)),
               ...(res.row ? [res.row] : []),
             ]);
+            setNotice(decisionNotice(r.word, d));
           },
           error: decideError,
+          notice,
         };
 
   return { phase, total, read, toRead, counts, store, failed, rows, rereadDone, startedAt, fatal, start, stop, reset, decide, decisionsReady: decisions !== null, approved };
@@ -339,18 +343,69 @@ export function Crop({ row }: { row: OcrRow }) {
   return <canvas ref={ref} aria-label="원본에서 잘라 낸 그림" className="mt-1.5 block h-auto max-h-28 max-w-full rounded border border-line" />;
 }
 
-const DECIDE: { value: FindingDecision; label: string; cls: string }[] = [
-  { value: "typo", label: "오타 확정", cls: "border-flag-line bg-flag-soft text-flag" },
-  { value: "ok", label: "정상 표기", cls: "border-pass-line bg-pass-soft text-pass" },
-  { value: "misread", label: "OCR 오독", cls: "border-line-strong bg-canvas text-ink-muted" },
+const DECIDE: { value: FindingDecision; label: string; on: string }[] = [
+  { value: "typo", label: "오타 확정", on: "border-flag bg-flag text-white" },
+  { value: "ok", label: "정상 표기", on: "border-pass bg-pass text-white" },
+  { value: "misread", label: "OCR 오독", on: "border-ink-muted bg-ink-muted text-white" },
 ];
 const RULE_TEXT: Record<FindingDecision, string> = { typo: "오타 확정", ok: "정상 표기", misread: "OCR 오독" };
 
+/** What clicking a decision does, said right after the click. */
+export function decisionNotice(word: string, d: FindingDecision | null) {
+  if (d === "typo") return `«${word}» 오타 확정 — 이 파일을 «수정 필요»로 표시했고, 같은 오타가 있는 다른 파일에도 바로 «오타 확정»으로 뜹니다.`;
+  if (d === "ok") return `«${word}» 정상 표기 — 다음 검사부터 이 표기는 의심하지 않습니다.`;
+  if (d === "misread") return `«${word}» OCR 오독 — 글자를 잘못 읽은 것으로 보고 «OCR 오독» 목록으로 옮겼습니다. 다음 검사부터 자동으로 걸러냅니다.`;
+  return `«${word}» 판정을 취소했습니다.`;
+}
+
 /** The team's decisions on suspects, and how to make one (판정 학습). */
-export type Decide = { mine: (r: OcrRow) => DecisionRow | undefined; onDecide: (r: OcrRow, d: FindingDecision | null) => void; error?: string | null };
+export type Decide = {
+  mine: (r: OcrRow) => DecisionRow | undefined;
+  onDecide: (r: OcrRow, d: FindingDecision | null) => void;
+  error?: string | null;
+  notice?: string | null;
+};
+
+/** Where a row shows now: a decision made on this screen moves it right away. */
+export function shownVerdict(r: OcrRow, decide?: Decide): OcrVerdict {
+  const d = decide?.mine(r)?.decision;
+  return d === "typo" ? "typo" : d === "misread" ? "misread" : r.verdict;
+}
+
+/** One line on what each button does, above the list. */
+export function DecideHelp() {
+  return (
+    <p className="text-[11px] text-ink-muted">
+      판정하면 바로 반영됩니다 — <b className="text-flag">오타 확정</b>: 이 파일 «수정 필요» 표시, 같은 오타는 다른 파일에서도 바로 표시 ·{" "}
+      <b className="text-pass">정상 표기</b>: 다음부터 의심 안 함 · <b className="text-ink-muted">OCR 오독</b>: 잘못 읽은 것으로 걸러냄. 같은 버튼을 다시 누르면 취소.
+    </p>
+  );
+}
+
+export function DecideNotice({ decide }: { decide?: Decide }) {
+  if (decide?.error)
+    return (
+      <p role="alert" className="rounded border border-flag-line bg-flag-soft px-3 py-2 text-xs text-flag">
+        {decide.error}
+      </p>
+    );
+  if (decide?.notice)
+    return (
+      <p role="status" className="rounded border border-pass-line bg-pass-soft px-3 py-2 text-xs text-pass">
+        ✓ {decide.notice}
+      </p>
+    );
+  return null;
+}
 
 export function Section({ v, rows, onOpen, crops, decide }: { v: OcrVerdict; rows: OcrRow[]; onOpen: (e: FileEntry) => void; crops: boolean; decide?: Decide }) {
-  const list = rows.filter((r) => r.verdict === v);
+  const list = rows
+    .filter((r) => shownVerdict(r, decide) === v)
+    // Confirmed typos first, approved ones last.
+    .sort((a, b) => {
+      const rank = (r: OcrRow) => ({ typo: 0, misread: 1, ok: 2 })[decide?.mine(r)?.decision ?? "misread"] ?? 1;
+      return rank(a) - rank(b);
+    });
   if (!list.length) return null;
   return (
     <section className="flex flex-col gap-1.5">
@@ -361,14 +416,20 @@ export function Section({ v, rows, onOpen, crops, decide }: { v: OcrVerdict; row
         {list.map((r) => {
           const mine = decide?.mine(r);
           const elsewhere = r.rule && r.rule.hash !== r.hash ? r.rule : undefined;
+          const approved = mine?.decision === "ok";
           return (
-            <li key={`${r.key}|${r.word}|${r.suggest}`} className="flex flex-col gap-0.5 px-3 py-2 text-xs">
+            <li
+              key={`${r.key}|${r.word}|${r.suggest}`}
+              className={`flex flex-col gap-0.5 px-3 py-2 text-xs ${mine?.decision === "typo" ? "bg-flag-soft" : approved ? "opacity-60" : ""}`}
+            >
               <span className="flex flex-wrap items-baseline gap-x-2">
-                <b className="text-flag">{r.word}</b>
+                <b className={approved ? "text-ink-muted line-through" : "text-flag"}>{r.word}</b>
                 {r.seenIn > 0 && <span className="text-ink-faint">{r.seenIn}개 파일</span>}
                 <span className="text-ink-faint">→</span>
                 <b className="text-pass">{r.suggest}</b>
                 {r.suggestSeenIn > 0 && <span className="text-ink-faint">{r.suggestSeenIn}개 파일</span>}
+                {mine?.decision === "typo" && <span className="rounded-sm bg-flag px-1.5 text-[11px] font-medium text-white">수정 필요</span>}
+                {approved && <span className="text-[11px] text-pass">정상 표기로 판정 · 다음 검사부터 안 뜸</span>}
                 <button
                   type="button"
                   onClick={() => onOpen(r.entry)}
@@ -378,27 +439,36 @@ export function Section({ v, rows, onOpen, crops, decide }: { v: OcrVerdict; row
                   {r.entry.name}
                 </button>
               </span>
-              <span className="text-ink">{r.line}</span>
-              {r.second && r.second !== r.line && <span className="text-[11px] text-ink-muted">다시 읽음: {r.second}</span>}
+              {!approved && <span className="text-ink">{r.line}</span>}
+              {!approved && r.second && r.second !== r.line && <span className="text-[11px] text-ink-muted">다시 읽음: {r.second}</span>}
               {elsewhere && !mine && (
                 <span className="text-[11px] text-ink-muted">
                   다른 파일에서 «{RULE_TEXT[elsewhere.decision]}»으로 판정됨{elsewhere.by && ` (${elsewhere.by})`} — 이 판정을 따름
                 </span>
               )}
-              {crops && <Crop row={r} />}
+              {crops && !approved && <Crop row={r} />}
               {decide && r.hash && (
                 <span className="mt-1 flex flex-wrap items-center gap-1">
-                  {DECIDE.map((d) => (
-                    <button
-                      key={d.value}
-                      type="button"
-                      onClick={() => decide.onDecide(r, mine?.decision === d.value ? null : d.value)}
-                      className={`rounded-sm border px-1.5 py-0.5 text-[11px] font-medium ${mine?.decision === d.value ? d.cls : "border-line text-ink-faint hover:bg-canvas"}`}
-                    >
-                      {d.label}
-                    </button>
-                  ))}
-                  {mine && <span className="ml-1 text-[11px] text-ink-faint">{mine.by && `${mine.by} · `}{new Date(mine.at).toLocaleDateString("ko-KR")}</span>}
+                  {DECIDE.map((d) => {
+                    const on = mine?.decision === d.value;
+                    return (
+                      <button
+                        key={d.value}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => decide.onDecide(r, on ? null : d.value)}
+                        className={`rounded-sm border px-2 py-0.5 text-[11px] font-medium ${on ? d.on : "border-line-strong bg-surface text-ink hover:bg-canvas"}`}
+                      >
+                        {on ? `✓ ${d.label}` : d.label}
+                      </button>
+                    );
+                  })}
+                  {mine && (
+                    <span className="ml-1 text-[11px] text-ink-faint">
+                      {mine.by && `${mine.by} · `}
+                      {new Date(mine.at).toLocaleDateString("ko-KR")}
+                    </span>
+                  )}
                 </span>
               )}
             </li>
@@ -419,8 +489,8 @@ export function OcrPanel({ ocr, fileName, onOpen }: { ocr: Ocr; fileName: string
     return () => clearInterval(t);
   }, [running]);
 
-  const count = (v: OcrVerdict) => ocr.rows.filter((r) => r.verdict === v).length;
-  const typoFiles = new Set(ocr.rows.filter((r) => r.verdict === "typo").map((r) => r.key)).size;
+  const count = (v: OcrVerdict) => ocr.rows.filter((r) => shownVerdict(r, ocr.decide) === v).length;
+  const typoFiles = new Set(ocr.rows.filter((r) => shownVerdict(r, ocr.decide) === "typo").map((r) => r.key)).size;
   const toReread = ocr.rows.filter((r) => !r.ocrLike).length;
   const elapsed = ocr.startedAt && now ? (now - ocr.startedAt) / 1000 : 0;
   const left = ocr.phase === "read" && ocr.read > 0 ? Math.round(((elapsed / ocr.read) * (ocr.toRead - ocr.read)) / 60) : null;
@@ -515,11 +585,8 @@ export function OcrPanel({ ocr, fileName, onOpen }: { ocr: Ocr; fileName: string
 
       {ocr.phase === "reread" && toReread > 0 && <p className="text-xs text-ink-muted">의심 {toReread}건을 확대해 다시 읽고 있습니다. 끝나면 판정이 바뀔 수 있습니다.</p>}
 
-      {ocr.decide?.error && (
-        <p role="alert" className="text-xs text-flag">
-          {ocr.decide.error}
-        </p>
-      )}
+      {ocr.decide && ocr.rows.some((r) => !r.ocrLike) && <DecideHelp />}
+      <DecideNotice decide={ocr.decide} />
       {done && !ocr.decisionsReady && (
         <p className="text-xs text-ink-muted">판정 저장소가 아직 준비되지 않아 판정 버튼은 숨겼습니다. (관리자: supabase/migrations/20261120_finding_decisions.sql 실행)</p>
       )}
