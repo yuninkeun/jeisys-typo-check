@@ -52,3 +52,6 @@ scripts/pdf-folder-extract/extract-bundle.cjs
 scripts/pdf-folder-extract/node.exe
 scripts/pdf-folder-extract/run.bat
 scripts/pdf-folder-extract/*.zip
+
+# OCR comparison reports: internal label text, kept local
+/reports/

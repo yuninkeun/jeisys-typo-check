@@ -4,41 +4,10 @@ import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "./limits";
+import { detectProductFromFilename } from "@/lib/products";
 
 const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "application/pdf"]);
 const MODEL = "gpt-4o";
-
-// Known product lines, longest-name-first so "ULTRAcel Q+" wins over a bare "Q+".
-const KNOWN_PRODUCTS = [
-  "ULTRAcel Q+",
-  "ULTRAcel II",
-  "ULTRAcel",
-  "DENSITY NOIR",
-  "DENSITY",
-  "POTENZA PRIME",
-  "POTENZA",
-  "LINEARZ",
-  "LINEA",
-  "TRI-BEAM",
-  "D'Liv",
-  "Cellec V",
-  "Cellec",
-  "LIPOcel",
-  "SmoothCool",
-  "Aquacel",
-  "IntraCel",
-  "Edge One",
-  "McCoom",
-  "IPL",
-].sort((a, b) => b.length - a.length);
-
-function detectProductFromFilename(filename: string): string | null {
-  const base = filename.replace(/\.[^.]+$/, "");
-  for (const product of KNOWN_PRODUCTS) {
-    if (base.toLowerCase().includes(product.toLowerCase())) return product;
-  }
-  return null;
-}
 
 export type BBox = { x: number; y: number; w: number; h: number };
 

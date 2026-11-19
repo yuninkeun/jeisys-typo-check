@@ -5,11 +5,15 @@ import { getCheckResult, uploadAndCheck } from "../check/actions";
 import { getDecisions, saveDecision, type Decision, type SavedDecision } from "./actions";
 import { entryKey, filesUnder, type DirNode, type FileEntry } from "./file-tree";
 import { toUploadable } from "./file-panel";
+import { useBridgeInfo } from "./bridge";
+import { OcrPanel, OcrStart, useOcr } from "./ocr-batch";
 
 export type { Decision } from "./actions";
 
 /** A folder review runs about 10–30 seconds per new file, so it is capped. */
 export const BATCH_LIMIT = 200;
+/** OCR 비교 costs nothing but time, so it may take a whole category at once. */
+export const OCR_LIMIT = 1000;
 const CONCURRENCY = 3;
 
 export const DECISIONS: { value: Decision; label: string; cls: string }[] = [
@@ -49,7 +53,7 @@ function loadLocal(): Record<string, Decision> {
   }
 }
 
-async function sha256(file: File) {
+export async function sha256(file: Blob) {
   const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -129,6 +133,8 @@ export function useBatch() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const stopRef = useRef(false);
   const runRef = useRef(0);
+  /** The AI-free check: OCR on this PC, files compared with each other. */
+  const ocr = useOcr();
   const storeRef = useRef<Store>("server");
 
   useEffect(() => {
@@ -144,7 +150,7 @@ export function useBatch() {
 
   const candidates = useMemo(() => {
     const all = files.filter((e) => isTarget(e, withPdf));
-    return { all: all.length, list: all.slice(0, BATCH_LIMIT) };
+    return { all: all.length, list: all.slice(0, BATCH_LIMIT), ocrList: all.slice(0, OCR_LIMIT) };
   }, [files, withPdf]);
 
   /** One line for the picked folders, as one block for the header and the CSV. */
@@ -165,6 +171,7 @@ export function useBatch() {
     setRunning(false);
     setItems([]);
     setStartedAt(null);
+    ocr.reset();
   }
 
   /** «검토» on a folder: before a review starts it adds the folder to (or takes
@@ -178,7 +185,8 @@ export function useBatch() {
   /** One folder alone may be over the limit (its first BATCH_LIMIT files are
    *  checked, with a warning); adding to a pick past the limit is refused. */
   function choose(node: DirNode) {
-    const fresh = items.length > 0 || folders.length === 0;
+    const started = items.length > 0 || ocr.phase !== null;
+    const fresh = started || folders.length === 0;
     if (!fresh && folders.some((f) => f.path === node.path)) {
       setFolders(folders.filter((f) => f.path !== node.path));
       return;
@@ -189,7 +197,7 @@ export function useBatch() {
       setLimitAsk({ n, kind: "blocked", what: "folder" });
       return;
     }
-    if (items.length > 0) reset();
+    if (started) reset();
     setFolders(next);
     if (n > BATCH_LIMIT) setLimitAsk({ n, kind: "trimmed", what: "folder" });
   }
@@ -330,6 +338,7 @@ export function useBatch() {
   const decisionOf = (entry: FileEntry) => infoOf(entry)?.decision ?? null;
 
   return {
+    ocr,
     folder,
     folders,
     remove,
@@ -444,7 +453,8 @@ export function DecisionButtons({ batch, entry, size = "sm" }: { batch: Batch; e
 export function BatchPanel({ batch, onOpen }: { batch: Batch; onOpen: (e: FileEntry) => void }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [now, setNow] = useState(0);
-  const { folder, items, running, candidates } = batch;
+  const { folder, items, running, candidates, ocr } = batch;
+  const bridge = useBridgeInfo();
 
   useEffect(() => {
     if (!running) return;
@@ -485,7 +495,7 @@ export function BatchPanel({ batch, onOpen }: { batch: Batch; onOpen: (e: FileEn
           {batch.folders.length > 1 ? `폴더 ${batch.folders.length}개` : "폴더"} 안 AI {folder.ai.toLocaleString()}개 · PDF{" "}
           {folder.pdf.toLocaleString()}개 · 한 번에 최대 {BATCH_LIMIT}개까지 검토합니다.
         </p>
-        {items.length === 0 && (
+        {items.length === 0 && ocr.phase === null && (
           <>
             {batch.folders.length > 1 && (
               <ul className="flex flex-wrap gap-1.5 pt-1">
@@ -518,7 +528,9 @@ export function BatchPanel({ batch, onOpen }: { batch: Batch; onOpen: (e: FileEn
       </header>
 
       <div className="flex flex-col gap-4 p-5">
-        {items.length === 0 ? (
+        {ocr.phase !== null ? (
+          <OcrPanel ocr={ocr} fileName={folder.fileName} onOpen={onOpen} />
+        ) : items.length === 0 ? (
           <div className="flex flex-col gap-3">
             <label className="flex w-fit items-center gap-2 text-sm text-ink">
               <input type="checkbox" checked={batch.withPdf} onChange={(e) => batch.setWithPdf(e.target.checked)} />
@@ -533,7 +545,7 @@ export function BatchPanel({ batch, onOpen }: { batch: Batch; onOpen: (e: FileEn
                 <p className="text-sm text-ink">
                   검토 대상 <b>{candidates.list.length.toLocaleString()}개</b>
                   {candidates.all > BATCH_LIMIT && (
-                    <span className="text-flag"> (전체 {candidates.all.toLocaleString()}개 중 트리 순서로 앞 {BATCH_LIMIT}개 — 나머지는 폴더를 나눠 따로 검토하세요)</span>
+                    <span className="text-flag"> (전체 {candidates.all.toLocaleString()}개 중 AI 검토는 트리 순서로 앞 {BATCH_LIMIT}개 — 나머지는 폴더를 나눠 따로 검토하세요. OCR 비교는 {candidates.ocrList.length.toLocaleString()}개 모두)</span>
                   )}
                 </p>
                 <p className="text-xs leading-relaxed text-ink-muted">
@@ -545,8 +557,9 @@ export function BatchPanel({ batch, onOpen }: { batch: Batch; onOpen: (e: FileEn
                   onClick={() => void batch.start()}
                   className="h-10 w-fit rounded bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
                 >
-                  {candidates.list.length}개 일괄 검토 시작
+                  {candidates.list.length}개 일괄 검토 시작 (AI)
                 </button>
+                <OcrStart bridge={bridge} count={candidates.ocrList.length} onStart={() => void ocr.start(candidates.ocrList)} />
               </>
             )}
           </div>
@@ -706,7 +719,7 @@ export function LimitDialog({ batch }: { batch: Batch }) {
               이 폴더의 검토 대상은 <b>{ask.n.toLocaleString()}개</b>로, 한 번에 검토할 수 있는 {BATCH_LIMIT}개를 넘습니다.
             </p>
             <p className="rounded-md bg-warn-soft px-3 py-2 text-xs text-warn">
-              앞 {BATCH_LIMIT}개만 검토되고 나머지 {(ask.n - BATCH_LIMIT).toLocaleString()}개는 빠집니다. 빠짐없이 하려면 하위 폴더를
+              AI 검토는 앞 {BATCH_LIMIT}개만 되고 나머지 {(ask.n - BATCH_LIMIT).toLocaleString()}개는 빠집니다(OCR 비교는 {OCR_LIMIT.toLocaleString()}개까지 한 번에 됩니다). 빠짐없이 하려면 하위 폴더를
               골라 나눠 검토하세요.
             </p>
           </>
