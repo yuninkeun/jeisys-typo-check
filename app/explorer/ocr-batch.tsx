@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { compactText, findOcrTypos, memoFlags, ocrVerdict, rereadBox, OCR_MIN_FILES, type OcrDoc, type OcrFinding, type OcrVerdict } from "@/lib/ocr-compare";
-import { getStoredOcr, ocrStats, saveOcr, type LabelCategory, type StoredDoc } from "./ocr-actions";
+import { applyDecisions, compactText, decisionRules, findOcrTypos, memoFlags, ocrVerdict, rereadBox, OCR_MIN_FILES, type DecisionRow, type FindingDecision, type OcrDoc, type OcrFinding, type OcrVerdict } from "@/lib/ocr-compare";
+import { getFindingDecisions, getStoredOcr, ocrStats, saveFindingDecision, saveOcr, type LabelCategory, type StoredDoc } from "./ocr-actions";
 import { sha256 } from "./batch";
 import { localGet, localMarkUploaded, localPending, localPut, localStats, ocrFile, type BridgeInfo, type LocalDoc, type LocalStats } from "./bridge";
 import { categoryOf, entryKey, type FileEntry } from "./file-tree";
@@ -14,7 +14,8 @@ import { openPdf } from "./pdf-render";
  *  each suspect is read again, enlarged, to drop OCR misreads. */
 
 type Phase = "hash" | "read" | "compare" | "reread" | "done" | "stopped";
-export type OcrRow = OcrFinding & { entry: FileEntry; verdict: OcrVerdict; second: string | null };
+/** `hash`: the file's content hash (for decisions); `rule`: the team's decision this row follows. */
+export type OcrRow = OcrFinding & { entry: FileEntry; verdict: OcrVerdict; second: string | null; hash?: string; rule?: DecisionRow };
 
 /** Only these go into the OCR 문구 DB for now. */
 const STORED: LabelCategory[] = ["박스", "스티커", "멸균지"];
@@ -49,6 +50,10 @@ export function useOcr() {
   const [rereadDone, setRereadDone] = useState(0);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
+  /** The team's decisions on suspects (null = the table isn't set up yet). */
+  const [decisions, setDecisions] = useState<DecisionRow[] | null>([]);
+  const [decideError, setDecideError] = useState<string | null>(null);
+  const [approved, setApproved] = useState(0);
   const runRef = useRef(0);
 
   function reset() {
@@ -136,6 +141,7 @@ export function useOcr() {
     setStartedAt(Date.now()); // time left = reading speed only, not the hashing above
     const docs: OcrDoc[] = [];
     const byKey = new Map<string, FileEntry>();
+    const hashByKey = new Map<string, string>();
     for (const it of items) {
       if (!live()) return;
       const key = entryKey(it.entry);
@@ -196,6 +202,7 @@ export function useOcr() {
         cache.set(it.hash, doc);
         docs.push(doc);
         byKey.set(key, it.entry);
+        hashByKey.set(key, it.hash);
       }
     }
     if (!live()) return;
@@ -203,19 +210,37 @@ export function useOcr() {
     setPhase("compare");
     await new Promise((r) => setTimeout(r, 30)); // let the screen show it
     const findings = findOcrTypos(docs);
-    const initial: OcrRow[] = findings.map((f) => ({
+    // The team's decisions: approved spellings drop out; confirmed typos and OCR
+    // misreads are labelled (and a confirmed typo is found in every file).
+    const dec = await getFindingDecisions();
+    const decRows = dec.ok ? dec.rows : null;
+    if (live()) setDecisions(decRows);
+    const rules = decisionRules(decRows ?? []);
+    const toRow = (f: OcrFinding): OcrRow => ({
       ...f,
       entry: byKey.get(f.key)!,
+      hash: hashByKey.get(f.key),
       verdict: f.ocrLike ? "misread" : "unclear",
       second: null,
-    }));
+    });
+    const grouped = new Map<string, OcrRow[]>();
+    for (const f of findings) grouped.set(f.key, [...(grouped.get(f.key) ?? []), toRow(f)]);
+    let dropped = 0;
+    const initial: OcrRow[] = [];
+    for (const d of docs) {
+      const res = applyDecisions(grouped.get(d.key) ?? [], rules, d, toRow);
+      dropped += res.approved;
+      for (const r of res.findings)
+        initial.push(r.rule?.decision === "typo" ? { ...r, verdict: "typo" } : r.rule?.decision === "misread" ? { ...r, verdict: "misread" } : r);
+    }
+    if (live()) setApproved(dropped);
     setRows(initial);
 
     setPhase("reread");
     for (let i = 0; i < initial.length; i++) {
       if (!live()) return;
       const f = initial[i];
-      if (!f.ocrLike) {
+      if (!f.ocrLike && !f.rule) {
         try {
           const res = await ocrFile(await f.entry.getFile(), rereadBox(f));
           if (!res.ok && res.reason === "offline") {
@@ -240,7 +265,25 @@ export function useOcr() {
     setPhase((p) => (p && p !== "done" ? "stopped" : p));
   }
 
-  return { phase, total, read, toRead, counts, store, failed, rows, rereadDone, startedAt, fatal, start, stop, reset };
+  const decide: Decide | undefined =
+    decisions === null
+      ? undefined
+      : {
+          mine: (r) => decisions.find((d) => d.hash === r.hash && d.word === r.word && d.suggest === r.suggest),
+          onDecide: async (r, d) => {
+            if (!r.hash) return;
+            setDecideError(null);
+            const res = await saveFindingDecision({ hash: r.hash, word: r.word, suggest: r.suggest, decision: d, fileName: r.entry.name });
+            if (!res.ok) return setDecideError(res.reason === "not_ready" ? "판정 저장소가 아직 준비되지 않았습니다." : (res.message ?? "판정을 저장하지 못했습니다."));
+            setDecisions((prev) => [
+              ...(prev ?? []).filter((x) => !(x.hash === r.hash && x.word === r.word && x.suggest === r.suggest)),
+              ...(res.row ? [res.row] : []),
+            ]);
+          },
+          error: decideError,
+        };
+
+  return { phase, total, read, toRead, counts, store, failed, rows, rereadDone, startedAt, fatal, start, stop, reset, decide, decisionsReady: decisions !== null, approved };
 }
 
 const VERDICT: Record<OcrVerdict, { title: string; hint: string; cls: string }> = {
@@ -296,7 +339,17 @@ export function Crop({ row }: { row: OcrRow }) {
   return <canvas ref={ref} aria-label="원본에서 잘라 낸 그림" className="mt-1.5 block h-auto max-h-28 max-w-full rounded border border-line" />;
 }
 
-export function Section({ v, rows, onOpen, crops }: { v: OcrVerdict; rows: OcrRow[]; onOpen: (e: FileEntry) => void; crops: boolean }) {
+const DECIDE: { value: FindingDecision; label: string; cls: string }[] = [
+  { value: "typo", label: "오타 확정", cls: "border-flag-line bg-flag-soft text-flag" },
+  { value: "ok", label: "정상 표기", cls: "border-pass-line bg-pass-soft text-pass" },
+  { value: "misread", label: "OCR 오독", cls: "border-line-strong bg-canvas text-ink-muted" },
+];
+const RULE_TEXT: Record<FindingDecision, string> = { typo: "오타 확정", ok: "정상 표기", misread: "OCR 오독" };
+
+/** The team's decisions on suspects, and how to make one (판정 학습). */
+export type Decide = { mine: (r: OcrRow) => DecisionRow | undefined; onDecide: (r: OcrRow, d: FindingDecision | null) => void; error?: string | null };
+
+export function Section({ v, rows, onOpen, crops, decide }: { v: OcrVerdict; rows: OcrRow[]; onOpen: (e: FileEntry) => void; crops: boolean; decide?: Decide }) {
   const list = rows.filter((r) => r.verdict === v);
   if (!list.length) return null;
   return (
@@ -305,28 +358,52 @@ export function Section({ v, rows, onOpen, crops }: { v: OcrVerdict; rows: OcrRo
         {VERDICT[v].title} <span className="font-normal text-ink-muted">{list.length}건 · {VERDICT[v].hint}</span>
       </h3>
       <ul className="flex flex-col divide-y divide-line rounded border border-line">
-        {list.map((r) => (
-          <li key={`${r.key}|${r.word}|${r.suggest}`} className="flex flex-col gap-0.5 px-3 py-2 text-xs">
-            <span className="flex flex-wrap items-baseline gap-x-2">
-              <b className="text-flag">{r.word}</b>
-              <span className="text-ink-faint">{r.seenIn}개 파일</span>
-              <span className="text-ink-faint">→</span>
-              <b className="text-pass">{r.suggest}</b>
-              <span className="text-ink-faint">{r.suggestSeenIn}개 파일</span>
-              <button
-                type="button"
-                onClick={() => onOpen(r.entry)}
-                title={entryKey(r.entry)}
-                className="ml-auto max-w-full truncate text-[11px] text-brand-700 underline"
-              >
-                {r.entry.name}
-              </button>
-            </span>
-            <span className="text-ink">{r.line}</span>
-            {r.second && r.second !== r.line && <span className="text-[11px] text-ink-muted">다시 읽음: {r.second}</span>}
-            {crops && <Crop row={r} />}
-          </li>
-        ))}
+        {list.map((r) => {
+          const mine = decide?.mine(r);
+          const elsewhere = r.rule && r.rule.hash !== r.hash ? r.rule : undefined;
+          return (
+            <li key={`${r.key}|${r.word}|${r.suggest}`} className="flex flex-col gap-0.5 px-3 py-2 text-xs">
+              <span className="flex flex-wrap items-baseline gap-x-2">
+                <b className="text-flag">{r.word}</b>
+                {r.seenIn > 0 && <span className="text-ink-faint">{r.seenIn}개 파일</span>}
+                <span className="text-ink-faint">→</span>
+                <b className="text-pass">{r.suggest}</b>
+                {r.suggestSeenIn > 0 && <span className="text-ink-faint">{r.suggestSeenIn}개 파일</span>}
+                <button
+                  type="button"
+                  onClick={() => onOpen(r.entry)}
+                  title={entryKey(r.entry)}
+                  className="ml-auto max-w-full truncate text-[11px] text-brand-700 underline"
+                >
+                  {r.entry.name}
+                </button>
+              </span>
+              <span className="text-ink">{r.line}</span>
+              {r.second && r.second !== r.line && <span className="text-[11px] text-ink-muted">다시 읽음: {r.second}</span>}
+              {elsewhere && !mine && (
+                <span className="text-[11px] text-ink-muted">
+                  다른 파일에서 «{RULE_TEXT[elsewhere.decision]}»으로 판정됨{elsewhere.by && ` (${elsewhere.by})`} — 이 판정을 따름
+                </span>
+              )}
+              {crops && <Crop row={r} />}
+              {decide && r.hash && (
+                <span className="mt-1 flex flex-wrap items-center gap-1">
+                  {DECIDE.map((d) => (
+                    <button
+                      key={d.value}
+                      type="button"
+                      onClick={() => decide.onDecide(r, mine?.decision === d.value ? null : d.value)}
+                      className={`rounded-sm border px-1.5 py-0.5 text-[11px] font-medium ${mine?.decision === d.value ? d.cls : "border-line text-ink-faint hover:bg-canvas"}`}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                  {mine && <span className="ml-1 text-[11px] text-ink-faint">{mine.by && `${mine.by} · `}{new Date(mine.at).toLocaleDateString("ko-KR")}</span>}
+                </span>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
@@ -438,8 +515,17 @@ export function OcrPanel({ ocr, fileName, onOpen }: { ocr: Ocr; fileName: string
 
       {ocr.phase === "reread" && toReread > 0 && <p className="text-xs text-ink-muted">의심 {toReread}건을 확대해 다시 읽고 있습니다. 끝나면 판정이 바뀔 수 있습니다.</p>}
 
-      <Section v="typo" rows={ocr.rows} onOpen={onOpen} crops />
-      <Section v="unclear" rows={ocr.rows} onOpen={onOpen} crops />
+      {ocr.decide?.error && (
+        <p role="alert" className="text-xs text-flag">
+          {ocr.decide.error}
+        </p>
+      )}
+      {done && !ocr.decisionsReady && (
+        <p className="text-xs text-ink-muted">판정 저장소가 아직 준비되지 않아 판정 버튼은 숨겼습니다. (관리자: supabase/migrations/20261120_finding_decisions.sql 실행)</p>
+      )}
+      {ocr.approved > 0 && <p className="text-xs text-ink-muted">«정상 표기»로 판정된 {ocr.approved}건은 빼고 보여 줍니다.</p>}
+      <Section v="typo" rows={ocr.rows} onOpen={onOpen} crops decide={ocr.decide} />
+      <Section v="unclear" rows={ocr.rows} onOpen={onOpen} crops decide={ocr.decide} />
       {done && count("typo") + count("unclear") === 0 && readOk > 0 && (
         <p className="rounded border border-pass-line bg-pass-soft px-3 py-2 text-xs text-pass">다른 파일들과 다르게 쓴 글자를 찾지 못했습니다.</p>
       )}
@@ -448,7 +534,7 @@ export function OcrPanel({ ocr, fileName, onOpen }: { ocr: Ocr; fileName: string
           <button type="button" onClick={() => setShowMisread((s) => !s)} className="w-fit text-xs text-ink-muted underline">
             {showMisread ? "OCR 오독 숨기기" : `OCR 오독으로 걸러낸 ${count("misread")}건 보기`}
           </button>
-          {showMisread && <Section v="misread" rows={ocr.rows} onOpen={onOpen} crops={false} />}
+          {showMisread && <Section v="misread" rows={ocr.rows} onOpen={onOpen} crops={false} decide={ocr.decide} />}
         </div>
       )}
 

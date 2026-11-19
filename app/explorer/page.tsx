@@ -29,8 +29,8 @@ export default function ExplorerPage() {
             },
             {
               fact: "오타 의심",
-              src: "AI 검사 + 과거 검증 이력과 표기 비교",
-              cond: "같은 파일은 저장된 결과 재사용",
+              src: "라벨 DB(박스·스티커·멸균지 OCR 글자)와 표기 비교 · AI 검사는 선택",
+              cond: "한 번 읽은 파일은 다시 읽지 않음",
               asof: "파일을 검사한 시각",
               tag: "기준 확인 필요",
             },

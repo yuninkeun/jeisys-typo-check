@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AppHeader } from "../components/app-header";
 import { createClient } from "@/lib/supabase/server";
 import { UploadForm } from "./upload-form";
+import { QuickCheck } from "./quick-check";
 import { Basis, Conclusion, DataBadge, stamp } from "../components/standard";
 
 const MAX_RANGE_DAYS = 182; // ~6 months
@@ -106,7 +107,7 @@ export default async function CheckPage({
                 <DataBadge />
               </div>
               <p className="text-sm text-ink-muted">
-                디자인·생산 담당이 인쇄 전에 묻는 질문 — 이 파일의 TEXT에 오탈자나 예전과 다른 표기가 있나
+                디자인·생산 담당이 인쇄 전에 묻는 질문 — 이 라벨에 다른 라벨들과 다르게 쓴 글자(오타)가 있나
               </p>
             </div>
             <Link
@@ -121,19 +122,28 @@ export default async function CheckPage({
               { fact: "검증 이력", src: "서버 검증 기록(documents)", cond: scope, asof: stamp(), tag: "정본" },
               {
                 fact: "오타 의심",
-                src: "AI 검사 + 과거 검증 이력과 표기 비교",
-                cond: "참고값, 최종 판단은 담당자",
-                asof: "파일을 검사한 시각",
+                src: "라벨 DB(박스·스티커·멸균지 OCR 글자)와 표기 비교",
+                cond: "같은 종류 라벨에 많이 나온 표기와 한 글자 다르면 의심 · 최종 판단은 담당자",
+                asof: "파일을 넣은 시각",
                 tag: "기준 확인 필요",
               },
             ]}
           />
-          <UploadForm />
+          <QuickCheck />
+          <details className="rounded border border-line bg-surface px-4 py-3">
+            <summary className="cursor-pointer text-sm font-medium text-ink-muted">AI 검사 (선택 · 유료 크레딧 필요)</summary>
+            <p className="mt-2 text-xs text-ink-muted">
+              라벨 DB에 비슷한 라벨이 없는 새 문장을 AI에게 물어볼 때 씁니다. 크레딧이 없으면 검사되지 않습니다.
+            </p>
+            <div className="mt-3">
+              <UploadForm />
+            </div>
+          </details>
         </section>
 
         <section className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-bold text-ink">검증 이력</h2>
+            <h2 className="text-sm font-bold text-ink">AI 검사 이력</h2>
             <span className="text-xs text-ink-faint">
               {range
                 ? `${toDateInputValue(range.from)} ~ ${toDateInputValue(range.to)}`

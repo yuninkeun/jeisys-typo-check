@@ -239,3 +239,72 @@ export function rereadBox(f: OcrFinding, pad = 0.6) {
   const x = Math.max(0, f.box.x - px), y = Math.max(0, f.box.y - py);
   return { x, y, w: Math.min(1 - x, f.box.w + 2 * px), h: Math.min(1 - y, f.box.h + 2 * py), lh: f.box.h };
 }
+
+/* ---- 판정 학습: the team's decisions on earlier suspects (finding_decisions) ---- */
+
+export type FindingDecision = "typo" | "ok" | "misread";
+export type DecisionRow = { hash: string; word: string; suggest: string; decision: FindingDecision; by: string; at: string };
+
+const pairKey = (word: string, suggest: string) => `${word.toLowerCase()}|${suggest.toLowerCase()}`;
+
+/** Newest decision per word→suggest pair: that is what the next check follows. */
+export function decisionRules(rows: DecisionRow[]) {
+  const rules = new Map<string, DecisionRow>();
+  for (const r of rows) {
+    const k = pairKey(r.word, r.suggest);
+    const cur = rules.get(k);
+    if (!cur || cur.at < r.at) rules.set(k, r);
+  }
+  return rules;
+}
+
+export type Ruled<F extends OcrFinding> = F & { rule?: DecisionRow };
+
+/** Applies the decisions to one file's findings:
+ *  - «정상 표기» pairs are dropped (returned in `approved`);
+ *  - «OCR 오독» / «오타 확정» pairs are tagged with the rule;
+ *  - a word confirmed as a typo elsewhere is added even when the comparison
+ *    itself missed it here (e.g. not enough files around it). */
+export function applyDecisions<F extends OcrFinding>(
+  findings: F[],
+  rules: Map<string, DecisionRow>,
+  doc?: OcrDoc,
+  make?: (f: OcrFinding) => F,
+): { findings: Ruled<F>[]; approved: number } {
+  let approved = 0;
+  const out: Ruled<F>[] = [];
+  for (const f of findings) {
+    const rule = rules.get(pairKey(f.word, f.suggest));
+    if (rule?.decision === "ok") {
+      approved++;
+      continue;
+    }
+    out.push(rule ? { ...f, rule } : f);
+  }
+  if (doc && make) {
+    const typos = [...rules.values()].filter((r) => r.decision === "typo");
+    const have = new Set(out.map((f) => f.word.toLowerCase()));
+    const memo = memoFlags(doc.lines);
+    for (const [i, l] of doc.lines.entries()) {
+      if (memo[i] || junkLine(l.t)) continue;
+      for (const w of words(l.t)) {
+        const r = typos.find((t) => t.word.toLowerCase() === w.toLowerCase());
+        if (!r || have.has(w.toLowerCase())) continue;
+        have.add(w.toLowerCase());
+        const f = make({
+          key: doc.key,
+          line: norm(l.t),
+          box: { x: l.x / doc.w, y: l.y / doc.h, w: l.w / doc.w, h: l.h / doc.h },
+          ar: doc.h / doc.w,
+          word: w,
+          suggest: r.suggest,
+          seenIn: 0,
+          suggestSeenIn: 0,
+          ocrLike: false,
+        });
+        out.push({ ...f, rule: r });
+      }
+    }
+  }
+  return { findings: out, approved };
+}

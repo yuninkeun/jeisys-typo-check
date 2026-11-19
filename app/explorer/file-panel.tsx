@@ -401,18 +401,8 @@ export function FilePanel({
     latest.current = { edits, lines };
   });
 
-  // Choosing a file starts the check right away. A file checked before comes
-  // back from the saved result without a new AI call (the server dedupes it).
-  useEffect(() => {
-    let cancelled = false;
-    void Promise.resolve().then(() => {
-      if (!cancelled) void runCheck(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry]);
+  // The AI check costs credits, so it runs only on request; the free check
+  // against the label DB (OcrFileCheck) runs by itself.
 
   const fixes: TextFix[] = [];
   edits.forEach((edit, i) => {
@@ -523,14 +513,16 @@ export function FilePanel({
           <p className="rounded border border-line-strong bg-canvas px-3 py-2 text-xs text-ink-muted">{compareMsg}</p>
         )}
 
+        <OcrFileCheck entry={entry} onOpen={onSelect} />
+
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={() => runCheck(false)}
             disabled={busy}
-            className="h-10 rounded bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
+            className="h-9 rounded border border-line-strong px-3 text-sm text-ink-muted hover:bg-canvas disabled:opacity-60"
           >
-            {busy ? "검사 중… (최대 30초)" : result ? "다시 불러오기" : "오타 검사"}
+            {busy ? "AI 검사 중… (최대 30초)" : result ? "AI 결과 다시 불러오기" : "AI 검사 (선택 · 유료)"}
           </button>
           {result && !busy && (
             <button
@@ -555,7 +547,6 @@ export function FilePanel({
           </p>
         )}
 
-        <OcrFileCheck entry={entry} onOpen={onSelect} />
         {outlined && <OutlineHelp entry={entry} entries={entries} onSelect={onSelect} />}
         {extractMsg && !result && (
           <p className="rounded border border-line-strong bg-canvas px-3 py-2 text-xs text-ink-muted">{extractMsg}</p>
