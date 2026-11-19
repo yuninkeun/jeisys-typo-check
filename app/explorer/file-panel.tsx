@@ -17,6 +17,7 @@ import { fixInIllustrator, savedFile, useBridge, type BridgeResult } from "./bri
 import { extractLines, openPdf, pageAsJpeg, renderPage } from "./pdf-render";
 import { XmpEditor } from "./xmp-editor";
 import { OutlineHelp } from "./outline-help";
+import { OcrFileCheck } from "./ocr-file";
 import { ProofEditor, type ProofMark } from "./proof";
 
 type Line = NonNullable<CheckState["lines"]>[number];
@@ -554,6 +555,7 @@ export function FilePanel({
           </p>
         )}
 
+        <OcrFileCheck entry={entry} onOpen={onSelect} />
         {outlined && <OutlineHelp entry={entry} entries={entries} onSelect={onSelect} />}
         {extractMsg && !result && (
           <p className="rounded border border-line-strong bg-canvas px-3 py-2 text-xs text-ink-muted">{extractMsg}</p>

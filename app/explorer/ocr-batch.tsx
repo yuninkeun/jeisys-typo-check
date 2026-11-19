@@ -263,7 +263,7 @@ function csv(rows: OcrRow[], fileName: string) {
 }
 
 /** The suspected spot, cut out of the file and drawn here (pdf.js, in the browser). */
-function Crop({ row }: { row: OcrRow }) {
+export function Crop({ row }: { row: OcrRow }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -296,7 +296,7 @@ function Crop({ row }: { row: OcrRow }) {
   return <canvas ref={ref} aria-label="원본에서 잘라 낸 그림" className="mt-1.5 block h-auto max-h-28 max-w-full rounded border border-line" />;
 }
 
-function Section({ v, rows, onOpen, crops }: { v: OcrVerdict; rows: OcrRow[]; onOpen: (e: FileEntry) => void; crops: boolean }) {
+export function Section({ v, rows, onOpen, crops }: { v: OcrVerdict; rows: OcrRow[]; onOpen: (e: FileEntry) => void; crops: boolean }) {
   const list = rows.filter((r) => r.verdict === v);
   if (!list.length) return null;
   return (

@@ -110,7 +110,9 @@ export function compactText(lines: OcrLine[], memo: boolean[]) {
 /** Fewer files than this and "most files spell it X" means little. */
 export const OCR_MIN_FILES = 8;
 
-export function findOcrTypos(input: OcrDoc[]): OcrFinding[] {
+/** `only`: report findings for that one file (OcrDoc.key) — the others are
+ *  just the reference, e.g. a new label checked against the whole DB. */
+export function findOcrTypos(input: OcrDoc[], opts: { only?: string } = {}): OcrFinding[] {
   const docs = input.map((d) => ({
     ...d,
     lines: blocks(d.lines)
@@ -180,6 +182,7 @@ export function findOcrTypos(input: OcrDoc[]): OcrFinding[] {
 
   const findings: OcrFinding[] = [];
   docs.forEach((d, di) => {
+    if (opts.only && d.key !== opts.only) return;
     const seen = new Set<string>();
     for (const l of d.lines) {
       if (junkLine(l.t)) continue;

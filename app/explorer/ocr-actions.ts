@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { detectProductFromFilename } from "@/lib/products";
+import { findOcrTypos, type OcrDoc, type OcrFinding } from "@/lib/ocr-compare";
 
 /** OCR 문구 DB (supabase/migrations/20261119_label_ocr.sql): label text read
  *  by the 연결 도우미, kept per file (content hash) so nobody reads it twice. */
@@ -64,7 +65,52 @@ export async function saveOcr(doc: {
     doc: { ...doc, product: detectProductFromFilename(doc.fileName) ?? "" },
   });
   if (error) return fail(error);
+  if (data) corpusCache.delete(doc.category); // the reference changed
   return { ok: true, saved: !!data };
+}
+
+/** A category's labels as the comparison reference, kept for a few minutes per
+ *  server instance (reading 400 labels takes a moment; they change rarely). */
+const corpusCache = new Map<LabelCategory, { at: number; docs: StoredDoc[] }>();
+const CORPUS_TTL = 10 * 60 * 1000;
+
+async function corpus(supabase: Awaited<ReturnType<typeof createClient>>, category: LabelCategory): Promise<StoredDoc[] | Fail> {
+  const hit = corpusCache.get(category);
+  if (hit && Date.now() - hit.at < CORPUS_TTL) return hit.docs;
+  const { data, error } = await supabase.from("label_files").select("content_hash").eq("category", category).range(0, 4999);
+  if (error) return fail(error);
+  const hashes = (data ?? []).map((r: { content_hash: string }) => r.content_hash);
+  const docs: StoredDoc[] = [];
+  for (let i = 0; i < hashes.length; i += 200) {
+    const { data: rows, error: e } = await supabase.rpc("get_label_ocr", { hashes: hashes.slice(i, i + 200) });
+    if (e) return fail(e);
+    for (const r of rows ?? []) docs.push({ hash: r.content_hash, w: r.page_w, h: r.page_h, lines: r.lines ?? [] });
+  }
+  corpusCache.set(category, { at: Date.now(), docs });
+  return docs;
+}
+
+const toPixels = (key: string, d: { w: number; h: number; lines: StoredLine[] }): OcrDoc => ({
+  key,
+  w: d.w,
+  h: d.h,
+  lines: d.lines.map((l) => ({ t: l.t, x: l.bbox.x * d.w, y: l.bbox.y * d.h, w: l.bbox.w * d.w, h: l.bbox.h * d.h })),
+});
+
+/** 기준 대비 검사: one label against every label of its category in the DB. */
+export async function checkAgainstDb(target: {
+  hash: string;
+  category: LabelCategory;
+  w: number;
+  h: number;
+  lines: StoredLine[];
+}): Promise<{ ok: true; findings: OcrFinding[]; reference: number } | Fail> {
+  const supabase = await signedIn();
+  const ref = await corpus(supabase, target.category);
+  if (!Array.isArray(ref)) return ref;
+  const others = ref.filter((d) => d.hash !== target.hash).map((d) => toPixels(d.hash, d));
+  const findings = findOcrTypos([...others, toPixels("target", target)], { only: "target" });
+  return { ok: true, findings, reference: others.length };
 }
 
 /** How many files are in the DB, per category. */
